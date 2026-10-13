@@ -1,0 +1,69 @@
+package com.facilcomanda.ponoa.printing;
+
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import com.facilcomanda.ponoa.printing.payload.PrintJobMessage;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+@ExtendWith(MockitoExtension.class)
+class PrintJobListenerTest {
+
+  @Mock private PrintJobRepository printJobRepository;
+  @Mock private EscPosTicketFormatter ticketFormatter;
+  @Mock private EscPosTcpPrinterClient printerClient;
+
+  @InjectMocks private PrintJobListener listener;
+
+  @Test
+  @DisplayName("Should process print job successfully and transition status to COMPLETED")
+  void shouldProcessJobSuccessfully() {
+    PrintJobMessage message =
+        new PrintJobMessage(
+            1L, 10L, 100L, 500L, PrintDocumentType.KITCHEN_ORDER, "192.168.1.50", 9100);
+
+    byte[] bytes = new byte[] {0x1B, 0x40};
+    when(ticketFormatter.formatTicket(10L, 500L, PrintDocumentType.KITCHEN_ORDER))
+        .thenReturn(bytes);
+
+    listener.handlePrintJob(message);
+
+    verify(printJobRepository)
+        .updateJobStatus(1L, 10L, PrintJobStatus.PRINTING.name(), null);
+    verify(printerClient).print("192.168.1.50", 9100, bytes);
+    verify(printJobRepository)
+        .updateJobStatus(1L, 10L, PrintJobStatus.COMPLETED.name(), null);
+  }
+
+  @Test
+  @DisplayName("Should mark job as FAILED and rethrow exception when printer connection fails")
+  void shouldMarkJobFailedOnException() {
+    PrintJobMessage message =
+        new PrintJobMessage(
+            1L, 10L, 100L, 500L, PrintDocumentType.KITCHEN_ORDER, "192.168.1.50", 9100);
+
+    byte[] bytes = new byte[] {0x1B, 0x40};
+    when(ticketFormatter.formatTicket(10L, 500L, PrintDocumentType.KITCHEN_ORDER))
+        .thenReturn(bytes);
+
+    doThrow(new PrinterCommunicationException("Connection refused", null))
+        .when(printerClient)
+        .print("192.168.1.50", 9100, bytes);
+
+    assertThatThrownBy(() -> listener.handlePrintJob(message))
+        .isInstanceOf(PrinterCommunicationException.class)
+        .hasMessageContaining("Connection refused");
+
+    verify(printJobRepository)
+        .updateJobStatus(eq(1L), eq(10L), eq(PrintJobStatus.FAILED.name()), any());
+  }
+}
