@@ -14,10 +14,15 @@ class TableService implements RestaurantTableProvider {
 
   private final FloorRepository floorRepository;
   private final TableRepository tableRepository;
+  private final TableEventPublisher tableEventPublisher;
 
-  TableService(FloorRepository floorRepository, TableRepository tableRepository) {
+  TableService(
+      FloorRepository floorRepository,
+      TableRepository tableRepository,
+      TableEventPublisher tableEventPublisher) {
     this.floorRepository = floorRepository;
     this.tableRepository = tableRepository;
+    this.tableEventPublisher = tableEventPublisher;
   }
 
   @Transactional
@@ -92,6 +97,18 @@ class TableService implements RestaurantTableProvider {
       throw new ResourceNotFoundException(
           "Table " + tableId + " not found in branch " + branchId);
     }
+    tableEventPublisher.publishTableStateChanged(branchId, tableId, newState, null);
+  }
+
+  @Override
+  @Transactional
+  public boolean occupyTableAtomically(Long tableId, Long branchId) {
+    int updated = tableRepository.occupyTableAtomically(tableId, branchId);
+    if (updated > 0) {
+      tableEventPublisher.publishTableStateChanged(branchId, tableId, TableState.OCCUPIED, null);
+      return true;
+    }
+    return false;
   }
 
   @Override

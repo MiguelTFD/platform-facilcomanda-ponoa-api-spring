@@ -24,6 +24,12 @@ interface TableRepository extends CrudRepository<RestaurantTable, Long> {
   int updateTableState(
       @Param("id") Long id, @Param("branchId") Long branchId, @Param("state") String state);
 
+  @Modifying
+  @Query(
+      "UPDATE restaurant_tables SET state = 'OCCUPIED', updated_at = NOW() "
+          + "WHERE id = :id AND branch_id = :branchId AND state = 'AVAILABLE'")
+  int occupyTableAtomically(@Param("id") Long id, @Param("branchId") Long branchId);
+
   @Query(
       "SELECT t.id, t.branch_id, t.floor_id, t.name as table_name, f.name as floor_name, t.state "
           + "FROM restaurant_tables t "

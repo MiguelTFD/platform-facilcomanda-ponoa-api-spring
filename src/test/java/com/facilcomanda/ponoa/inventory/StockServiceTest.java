@@ -21,6 +21,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class StockServiceTest {
 
   @Mock private StockRepository stockRepository;
+  @Mock private StockEventPublisher stockEventPublisher;
 
   @InjectMocks private StockService stockService;
 
@@ -29,16 +30,33 @@ class StockServiceTest {
   void shouldInitializeStock() {
     stockService.initializeSkuStock(1L, 100L, 50);
     verify(stockRepository).upsertStock(1L, 100L, 50);
+    verify(stockEventPublisher).publishStockUpdate(1L, 100L, 50, true);
   }
 
   @Test
   @DisplayName("Should deduct stock atomically when sufficient stock exists")
   void shouldDeductStockSuccessfully() {
     when(stockRepository.deductStockAtomic(1L, 100L, 5)).thenReturn(1);
+    StockLevel level = new StockLevel(1L, 1L, 100L, 45, OffsetDateTime.now());
+    when(stockRepository.findByBranchIdAndSkuId(1L, 100L)).thenReturn(Optional.of(level));
 
     stockService.deductStock(1L, 100L, 5);
 
     verify(stockRepository).deductStockAtomic(1L, 100L, 5);
+    verify(stockEventPublisher).publishStockUpdate(1L, 100L, 45, true);
+  }
+
+  @Test
+  @DisplayName("Should broadcast depletion when stock reaches zero")
+  void shouldBroadcastDepletionWhenStockReachesZero() {
+    when(stockRepository.deductStockAtomic(1L, 100L, 5)).thenReturn(1);
+    StockLevel level = new StockLevel(1L, 1L, 100L, 0, OffsetDateTime.now());
+    when(stockRepository.findByBranchIdAndSkuId(1L, 100L)).thenReturn(Optional.of(level));
+
+    stockService.deductStock(1L, 100L, 5);
+
+    verify(stockRepository).deductStockAtomic(1L, 100L, 5);
+    verify(stockEventPublisher).publishStockUpdate(1L, 100L, 0, false);
   }
 
   @Test
@@ -67,10 +85,13 @@ class StockServiceTest {
   @DisplayName("Should add stock atomically when record exists")
   void shouldAddStockSuccessfully() {
     when(stockRepository.addStockAtomic(1L, 100L, 10)).thenReturn(1);
+    StockLevel level = new StockLevel(1L, 1L, 100L, 20, OffsetDateTime.now());
+    when(stockRepository.findByBranchIdAndSkuId(1L, 100L)).thenReturn(Optional.of(level));
 
     stockService.addStock(1L, 100L, 10);
 
     verify(stockRepository).addStockAtomic(1L, 100L, 10);
+    verify(stockEventPublisher).publishStockUpdate(1L, 100L, 20, true);
   }
 
   @Test

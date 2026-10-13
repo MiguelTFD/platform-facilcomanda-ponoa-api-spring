@@ -17,4 +17,12 @@ class KitchenScreenPublisher {
     String destination = "/topic/branches/" + branchId + "/kitchen";
     messagingTemplate.convertAndSend(destination, ticket);
   }
+
+  public void publishOrderStatusNotification(
+      Long branchId, Long orderId, KitchenTicketStatus status, String notes) {
+    String destination = "/topic/branches/" + branchId + "/orders";
+    OrderStatusNotification message =
+        new OrderStatusNotification(orderId, branchId, status, notes);
+    messagingTemplate.convertAndSend(destination, message);
+  }
 }

@@ -10,14 +10,17 @@ import org.springframework.transaction.annotation.Transactional;
 public class StockService {
 
   private final StockRepository stockRepository;
+  private final StockEventPublisher stockEventPublisher;
 
-  StockService(StockRepository stockRepository) {
+  StockService(StockRepository stockRepository, StockEventPublisher stockEventPublisher) {
     this.stockRepository = stockRepository;
+    this.stockEventPublisher = stockEventPublisher;
   }
 
   @Transactional
   public void initializeSkuStock(Long branchId, Long skuId, int initialQuantity) {
     stockRepository.upsertStock(branchId, skuId, initialQuantity);
+    stockEventPublisher.publishStockUpdate(branchId, skuId, initialQuantity, initialQuantity > 0);
   }
 
   @Transactional
@@ -33,6 +36,13 @@ public class StockService {
       throw new InsufficientStockException(
           "Insufficient stock for SKU " + skuId + " in branch " + branchId);
     }
+
+    stockRepository
+        .findByBranchIdAndSkuId(branchId, skuId)
+        .ifPresent(
+            level ->
+                stockEventPublisher.publishStockUpdate(
+                    branchId, skuId, level.quantity(), level.quantity() > 0));
   }
 
   @Transactional
@@ -42,6 +52,13 @@ public class StockService {
       throw new ResourceNotFoundException(
           "SKU " + skuId + " is not registered in stock for branch " + branchId);
     }
+
+    stockRepository
+        .findByBranchIdAndSkuId(branchId, skuId)
+        .ifPresent(
+            level ->
+                stockEventPublisher.publishStockUpdate(
+                    branchId, skuId, level.quantity(), level.quantity() > 0));
   }
 
   @Transactional(readOnly = true)

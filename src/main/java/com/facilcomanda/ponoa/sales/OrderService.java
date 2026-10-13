@@ -61,13 +61,17 @@ class OrderService {
             "Table " + request.tableId() + " is currently OUT_OF_SERVICE");
       }
 
+      boolean occupied =
+          restaurantTableProvider.occupyTableAtomically(request.tableId(), branchId);
+      if (!occupied) {
+        throw new IllegalStateException(
+            "La mesa " + table.tableName() + " ya está ocupada o no se encuentra disponible.");
+      }
+
       resolvedTableName =
           table.floorName() != null
               ? table.tableName() + " (" + table.floorName() + ")"
               : table.tableName();
-
-      restaurantTableProvider.updateTableState(
-          request.tableId(), branchId, TableState.OCCUPIED);
     }
 
     Set<Long> requestedSkuIds =

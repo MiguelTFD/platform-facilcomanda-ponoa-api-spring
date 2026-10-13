@@ -24,6 +24,7 @@ class TableServiceTest {
 
   @Mock private FloorRepository floorRepository;
   @Mock private TableRepository tableRepository;
+  @Mock private TableEventPublisher tableEventPublisher;
 
   @InjectMocks private TableService tableService;
 
@@ -105,6 +106,30 @@ class TableServiceTest {
     tableService.updateTableState(101L, 1L, TableState.OCCUPIED);
 
     verify(tableRepository).updateTableState(101L, 1L, "OCCUPIED");
+    verify(tableEventPublisher).publishTableStateChanged(1L, 101L, TableState.OCCUPIED, null);
+  }
+
+  @Test
+  @DisplayName("Should occupy table atomically and publish live event")
+  void shouldOccupyTableAtomicallyAndPublishEvent() {
+    when(tableRepository.occupyTableAtomically(101L, 1L)).thenReturn(1);
+
+    boolean result = tableService.occupyTableAtomically(101L, 1L);
+
+    assertThat(result).isTrue();
+    verify(tableRepository).occupyTableAtomically(101L, 1L);
+    verify(tableEventPublisher).publishTableStateChanged(1L, 101L, TableState.OCCUPIED, null);
+  }
+
+  @Test
+  @DisplayName("Should return false when atomic table occupation fails (already occupied)")
+  void shouldReturnFalseWhenAtomicOccupationFails() {
+    when(tableRepository.occupyTableAtomically(101L, 1L)).thenReturn(0);
+
+    boolean result = tableService.occupyTableAtomically(101L, 1L);
+
+    assertThat(result).isFalse();
+    verify(tableRepository).occupyTableAtomically(101L, 1L);
   }
 
   @Test

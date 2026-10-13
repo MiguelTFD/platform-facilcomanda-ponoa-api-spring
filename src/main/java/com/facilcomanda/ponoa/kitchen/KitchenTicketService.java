@@ -62,6 +62,8 @@ class KitchenTicketService {
 
     KitchenTicketResponse response = toResponse(updatedTicket);
     kitchenScreenPublisher.publishTicketUpdate(branchId, response);
+    kitchenScreenPublisher.publishOrderStatusNotification(
+        branchId, updatedTicket.orderId(), updatedTicket.status(), updatedTicket.notes());
 
     return response;
   }

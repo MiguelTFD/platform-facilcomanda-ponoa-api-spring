@@ -126,6 +126,8 @@ class OrderServiceTest {
         new RestaurantTableView(tableId, branchId, 3L, "Mesa 4", "Terraza", TableState.AVAILABLE);
     when(restaurantTableProvider.findTableByIdAndBranch(tableId, branchId))
         .thenReturn(Optional.of(tableView));
+    when(restaurantTableProvider.occupyTableAtomically(tableId, branchId))
+        .thenReturn(true);
 
     when(catalogPriceProvider.getAvailablePrices(branchId, Set.of(201L)))
         .thenReturn(Map.of(201L, new BigDecimal("45.00")));
@@ -150,8 +152,8 @@ class OrderServiceTest {
 
     assertThat(orderId).isEqualTo(99L);
 
-    // Verify table transition to OCCUPIED
-    verify(restaurantTableProvider).updateTableState(tableId, branchId, TableState.OCCUPIED);
+    // Verify atomic table occupation
+    verify(restaurantTableProvider).occupyTableAtomically(tableId, branchId);
 
     // Verify order saved with table and notes
     ArgumentCaptor<CustomerOrder> orderCaptor = ArgumentCaptor.forClass(CustomerOrder.class);
@@ -171,5 +173,29 @@ class OrderServiceTest {
     assertThat(publishedEvent.tableName()).isEqualTo("Mesa 4 (Terraza)");
     assertThat(publishedEvent.orderType()).isEqualTo("DINE_IN");
     assertThat(publishedEvent.notes()).isEqualTo("Traer la cuenta apenas terminen");
+  }
+
+  @Test
+  @DisplayName("Should throw IllegalStateException when table is already occupied concurrently by another waiter")
+  void shouldThrowWhenTableAlreadyOccupiedConcurrently() {
+    Long branchId = 2L;
+    Long tableId = 15L;
+    PlaceOrderRequest request =
+        new PlaceOrderRequest(
+            tableId, "DINE_IN", null, Set.of(new PlaceOrderRequest.OrderItemPayload(201L, 1)));
+
+    RestaurantTableView tableView =
+        new RestaurantTableView(tableId, branchId, 3L, "Mesa 4", "Terraza", TableState.AVAILABLE);
+    when(restaurantTableProvider.findTableByIdAndBranch(tableId, branchId))
+        .thenReturn(Optional.of(tableView));
+    when(restaurantTableProvider.occupyTableAtomically(tableId, branchId))
+        .thenReturn(false);
+
+    assertThatThrownBy(
+            () ->
+                orderService.placeOrder(
+                    branchId, UUID.randomUUID(), "key-concurrent", "waiter@facilcomanda.com", request))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("ya está ocupada o no se encuentra disponible");
   }
 }

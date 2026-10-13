@@ -80,6 +80,8 @@ class KitchenTicketServiceTest {
 
     assertThat(response.status()).isEqualTo(KitchenTicketStatus.IN_PREPARATION);
     verify(kitchenScreenPublisher).publishTicketUpdate(eq(branchId), any(KitchenTicketResponse.class));
+    verify(kitchenScreenPublisher)
+        .publishOrderStatusNotification(branchId, 100L, KitchenTicketStatus.IN_PREPARATION, null);
   }
 
   @Test
