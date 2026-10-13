@@ -5,12 +5,23 @@ import java.time.Instant;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
 @RestControllerAdvice
 class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
+
+  @ExceptionHandler(AccessDeniedException.class)
+  ProblemDetail handleAccessDenied(AccessDeniedException ex) {
+    ProblemDetail problemDetail =
+        ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN, ex.getMessage());
+    problemDetail.setTitle("Access Denied");
+    problemDetail.setType(URI.create("https://api.facilcomanda.com/errors/forbidden"));
+    problemDetail.setProperty("timestamp", Instant.now());
+    return problemDetail;
+  }
 
   @ExceptionHandler(ResourceNotFoundException.class)
   ProblemDetail handleResourceNotFound(ResourceNotFoundException ex) {

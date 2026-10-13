@@ -1,5 +1,6 @@
 package com.facilcomanda.ponoa.sales.event;
 
+import com.facilcomanda.ponoa.sales.OrderPlacedEvent;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.scheduling.annotation.Async;

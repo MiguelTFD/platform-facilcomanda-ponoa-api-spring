@@ -2,8 +2,8 @@ package com.facilcomanda.ponoa.sales;
 
 import com.facilcomanda.ponoa.global.exception.ResourceNotFoundException;
 import com.facilcomanda.ponoa.inventory.StockService;
-import com.facilcomanda.ponoa.sales.event.OrderPlacedEvent;
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -33,7 +33,12 @@ class OrderService {
 
   @Transactional
   public Long placeOrder(
-      UUID userId, String idempotencyKey, String userEmail, PlaceOrderRequest request) {
+      Long branchId,
+      UUID userId,
+      String idempotencyKey,
+      String userEmail,
+      PlaceOrderRequest request) {
+
     Set<Long> requestedSkuIds =
         request.items().stream()
             .map(PlaceOrderRequest.OrderItemPayload::skuId)
@@ -69,12 +74,29 @@ class OrderService {
     }
 
     CustomerOrder newOrder =
-        new CustomerOrder(null, userId, idempotencyKey, totalOrderAmount, "PENDING", orderItems);
+        new CustomerOrder(
+            null, branchId, userId, idempotencyKey, totalOrderAmount, "PENDING", orderItems);
 
     Long savedOrderId = orderRepository.save(newOrder).id();
 
-    eventPublisher.publishEvent(new OrderPlacedEvent(savedOrderId, userEmail, totalOrderAmount));
+    eventPublisher.publishEvent(
+        new OrderPlacedEvent(savedOrderId, branchId, userEmail, totalOrderAmount));
 
     return savedOrderId;
+  }
+
+  @Transactional(readOnly = true)
+  public CustomerOrder getOrderByIdAndBranch(Long orderId, Long branchId) {
+    return orderRepository
+        .findByIdAndBranchId(orderId, branchId)
+        .orElseThrow(
+            () ->
+                new ResourceNotFoundException(
+                    "Order " + orderId + " not found in branch " + branchId));
+  }
+
+  @Transactional(readOnly = true)
+  public List<CustomerOrder> getOrdersByBranch(Long branchId) {
+    return orderRepository.findAllByBranchId(branchId);
   }
 }

@@ -11,6 +11,7 @@ import org.springframework.data.relational.core.mapping.Table;
 @Table("customer_orders")
 public record CustomerOrder(
     @Id Long id,
+    @Column("branch_id") Long branchId,
     @Column("app_user_id") UUID appUserId,
     @Column("idempotency_key") String idempotencyKey,
     BigDecimal totalAmount,
