@@ -1,0 +1,11 @@
+# Universal policy for any current or future file extension
+* text=auto eol=lf
+
+# Windows scripts
+*.bat text eol=crlf
+*.cmd text eol=crlf
+mvnw.cmd text eol=crlf
+
+# Unix scripts
+*.sh text eol=lf
+mvnw text eol=lf
