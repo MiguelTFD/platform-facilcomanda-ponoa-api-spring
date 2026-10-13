@@ -32,7 +32,8 @@ class PrintJobListenerTest {
             1L, 10L, 100L, 500L, PrintDocumentType.KITCHEN_ORDER, "192.168.1.50", 9100);
 
     byte[] bytes = new byte[] {0x1B, 0x40};
-    when(ticketFormatter.formatTicket(10L, 500L, PrintDocumentType.KITCHEN_ORDER, null))
+    when(ticketFormatter.formatTicket(
+            10L, 500L, PrintDocumentType.KITCHEN_ORDER, null, null, "DINE_IN", null))
         .thenReturn(bytes);
 
     listener.handlePrintJob(message);
@@ -52,12 +53,15 @@ class PrintJobListenerTest {
             2L, 10L, 101L, 500L, PrintDocumentType.KITCHEN_ORDER, "192.168.1.51", 9100, "PARRILLA");
 
     byte[] bytes = new byte[] {0x1B, 0x40};
-    when(ticketFormatter.formatTicket(10L, 500L, PrintDocumentType.KITCHEN_ORDER, "PARRILLA"))
+    when(ticketFormatter.formatTicket(
+            10L, 500L, PrintDocumentType.KITCHEN_ORDER, "PARRILLA", null, "DINE_IN", null))
         .thenReturn(bytes);
 
     listener.handlePrintJob(message);
 
-    verify(ticketFormatter).formatTicket(10L, 500L, PrintDocumentType.KITCHEN_ORDER, "PARRILLA");
+    verify(ticketFormatter)
+        .formatTicket(
+            10L, 500L, PrintDocumentType.KITCHEN_ORDER, "PARRILLA", null, "DINE_IN", null);
     verify(printerClient).print("192.168.1.51", 9100, bytes);
   }
 
@@ -69,7 +73,8 @@ class PrintJobListenerTest {
             1L, 10L, 100L, 500L, PrintDocumentType.KITCHEN_ORDER, "192.168.1.50", 9100);
 
     byte[] bytes = new byte[] {0x1B, 0x40};
-    when(ticketFormatter.formatTicket(10L, 500L, PrintDocumentType.KITCHEN_ORDER, null))
+    when(ticketFormatter.formatTicket(
+            10L, 500L, PrintDocumentType.KITCHEN_ORDER, null, null, "DINE_IN", null))
         .thenReturn(bytes);
 
     doThrow(new PrinterCommunicationException("Connection refused", null))

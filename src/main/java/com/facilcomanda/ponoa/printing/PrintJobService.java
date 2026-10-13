@@ -86,6 +86,17 @@ class PrintJobService {
   @Transactional
   public void enqueueKitchenPrintJobsForOrder(
       Long branchId, Long orderId, Set<Long> skuIds) {
+    enqueueKitchenPrintJobsForOrder(branchId, orderId, skuIds, null, "DINE_IN", null);
+  }
+
+  @Transactional
+  public void enqueueKitchenPrintJobsForOrder(
+      Long branchId,
+      Long orderId,
+      Set<Long> skuIds,
+      String tableName,
+      String orderType,
+      String notes) {
     Set<String> productionAreas;
     if (skuIds != null && !skuIds.isEmpty()) {
       Map<Long, String> areaMap = catalogPriceProvider.getProductionAreasForSkus(skuIds);
@@ -151,7 +162,10 @@ class PrintJobService {
                   PrintDocumentType.KITCHEN_ORDER,
                   printer.ipAddress(),
                   printer.port(),
-                  area);
+                  area,
+                  tableName,
+                  orderType,
+                  notes);
 
           String routingKey = "printing.branch." + branchId;
           rabbitTemplate.convertAndSend(

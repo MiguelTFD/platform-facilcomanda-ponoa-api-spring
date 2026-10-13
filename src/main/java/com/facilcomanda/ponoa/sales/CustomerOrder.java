@@ -14,6 +14,21 @@ public record CustomerOrder(
     @Column("branch_id") Long branchId,
     @Column("app_user_id") UUID appUserId,
     @Column("idempotency_key") String idempotencyKey,
+    @Column("table_id") Long tableId,
+    @Column("order_type") String orderType,
+    String notes,
     BigDecimal totalAmount,
     String status,
-    @MappedCollection(idColumn = "order_id") Set<OrderItem> items) {}
+    @MappedCollection(idColumn = "order_id") Set<OrderItem> items) {
+
+  public CustomerOrder(
+      Long id,
+      Long branchId,
+      UUID appUserId,
+      String idempotencyKey,
+      BigDecimal totalAmount,
+      String status,
+      Set<OrderItem> items) {
+    this(id, branchId, appUserId, idempotencyKey, null, "DINE_IN", null, totalAmount, status, items);
+  }
+}

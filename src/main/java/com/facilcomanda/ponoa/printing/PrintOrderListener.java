@@ -19,6 +19,11 @@ class PrintOrderListener {
   @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
   public void onOrderPlaced(OrderPlacedEvent event) {
     printJobService.enqueueKitchenPrintJobsForOrder(
-        event.branchId(), event.orderId(), event.skuIds());
+        event.branchId(),
+        event.orderId(),
+        event.skuIds(),
+        event.tableName(),
+        event.orderType(),
+        event.notes());
   }
 }

@@ -9,6 +9,9 @@ import static org.mockito.Mockito.when;
 import com.facilcomanda.ponoa.catalog.CatalogPriceProvider;
 import com.facilcomanda.ponoa.global.exception.ResourceNotFoundException;
 import com.facilcomanda.ponoa.inventory.StockService;
+import com.facilcomanda.ponoa.table.RestaurantTableProvider;
+import com.facilcomanda.ponoa.table.RestaurantTableView;
+import com.facilcomanda.ponoa.table.TableState;
 import java.math.BigDecimal;
 import java.util.Map;
 import java.util.Optional;
@@ -29,6 +32,7 @@ class OrderServiceTest {
   @Mock private OrderRepository orderRepository;
   @Mock private CatalogPriceProvider catalogPriceProvider;
   @Mock private StockService stockService;
+  @Mock private RestaurantTableProvider restaurantTableProvider;
   @Mock private ApplicationEventPublisher eventPublisher;
 
   @InjectMocks private OrderService orderService;
@@ -100,5 +104,72 @@ class OrderServiceTest {
     assertThatThrownBy(() -> orderService.getOrderByIdAndBranch(1L, 5L))
         .isInstanceOf(ResourceNotFoundException.class)
         .hasMessageContaining("branch 5");
+  }
+
+  @Test
+  @DisplayName("Should place DINE_IN order with table, transition table to OCCUPIED and capture item comments")
+  void shouldPlaceDineInOrderWithTableAndComments() {
+    Long branchId = 2L;
+    Long tableId = 15L;
+    UUID userId = UUID.randomUUID();
+    String idempotencyKey = "order-table-15";
+
+    PlaceOrderRequest request =
+        new PlaceOrderRequest(
+            tableId,
+            "DINE_IN",
+            "Traer la cuenta apenas terminen",
+            Set.of(
+                new PlaceOrderRequest.OrderItemPayload(201L, 1, "Sin cebolla, bien cocido")));
+
+    RestaurantTableView tableView =
+        new RestaurantTableView(tableId, branchId, 3L, "Mesa 4", "Terraza", TableState.AVAILABLE);
+    when(restaurantTableProvider.findTableByIdAndBranch(tableId, branchId))
+        .thenReturn(Optional.of(tableView));
+
+    when(catalogPriceProvider.getAvailablePrices(branchId, Set.of(201L)))
+        .thenReturn(Map.of(201L, new BigDecimal("45.00")));
+
+    CustomerOrder savedOrder =
+        new CustomerOrder(
+            99L,
+            branchId,
+            userId,
+            idempotencyKey,
+            tableId,
+            "DINE_IN",
+            "Traer la cuenta apenas terminen",
+            new BigDecimal("45.00"),
+            "PENDING",
+            Set.of(new OrderItem(201L, 1, new BigDecimal("45.00"), "Sin cebolla, bien cocido")));
+
+    when(orderRepository.save(any(CustomerOrder.class))).thenReturn(savedOrder);
+
+    Long orderId =
+        orderService.placeOrder(branchId, userId, idempotencyKey, "waiter@facilcomanda.com", request);
+
+    assertThat(orderId).isEqualTo(99L);
+
+    // Verify table transition to OCCUPIED
+    verify(restaurantTableProvider).updateTableState(tableId, branchId, TableState.OCCUPIED);
+
+    // Verify order saved with table and notes
+    ArgumentCaptor<CustomerOrder> orderCaptor = ArgumentCaptor.forClass(CustomerOrder.class);
+    verify(orderRepository).save(orderCaptor.capture());
+    CustomerOrder capturedOrder = orderCaptor.getValue();
+    assertThat(capturedOrder.tableId()).isEqualTo(tableId);
+    assertThat(capturedOrder.notes()).isEqualTo("Traer la cuenta apenas terminen");
+    assertThat(capturedOrder.items()).hasSize(1);
+    OrderItem capturedItem = capturedOrder.items().iterator().next();
+    assertThat(capturedItem.comments()).isEqualTo("Sin cebolla, bien cocido");
+    assertThat(capturedItem.subtotal()).isEqualByComparingTo("45.00");
+
+    // Verify event published with resolved table name "Mesa 4 (Terraza)"
+    ArgumentCaptor<OrderPlacedEvent> eventCaptor = ArgumentCaptor.forClass(OrderPlacedEvent.class);
+    verify(eventPublisher).publishEvent(eventCaptor.capture());
+    OrderPlacedEvent publishedEvent = eventCaptor.getValue();
+    assertThat(publishedEvent.tableName()).isEqualTo("Mesa 4 (Terraza)");
+    assertThat(publishedEvent.orderType()).isEqualTo("DINE_IN");
+    assertThat(publishedEvent.notes()).isEqualTo("Traer la cuenta apenas terminen");
   }
 }

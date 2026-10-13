@@ -18,6 +18,20 @@ class KitchenOrderListener {
   @Async
   @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
   public void onOrderPlaced(OrderPlacedEvent event) {
-    kitchenTicketService.createTicketForOrder(event.branchId(), event.orderId(), null);
+    StringBuilder notesBuilder = new StringBuilder();
+    if (event.tableName() != null && !event.tableName().isBlank()) {
+      notesBuilder.append("Mesa: ").append(event.tableName());
+    }
+    if (event.orderType() != null && !event.orderType().isBlank()) {
+      if (notesBuilder.length() > 0) notesBuilder.append(" | ");
+      notesBuilder.append("Tipo: ").append(event.orderType());
+    }
+    if (event.notes() != null && !event.notes().isBlank()) {
+      if (notesBuilder.length() > 0) notesBuilder.append(" | ");
+      notesBuilder.append("Notas: ").append(event.notes());
+    }
+
+    String ticketNotes = notesBuilder.length() > 0 ? notesBuilder.toString() : null;
+    kitchenTicketService.createTicketForOrder(event.branchId(), event.orderId(), ticketNotes);
   }
 }

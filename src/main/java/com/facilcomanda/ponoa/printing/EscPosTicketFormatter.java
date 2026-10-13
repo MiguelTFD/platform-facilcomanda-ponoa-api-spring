@@ -29,6 +29,17 @@ class EscPosTicketFormatter {
 
   public byte[] formatTicket(
       Long branchId, Long orderId, PrintDocumentType documentType, String targetArea) {
+    return formatTicket(branchId, orderId, documentType, targetArea, null, null, null);
+  }
+
+  public byte[] formatTicket(
+      Long branchId,
+      Long orderId,
+      PrintDocumentType documentType,
+      String targetArea,
+      String tableName,
+      String orderType,
+      String notes) {
     try (ByteArrayOutputStream out = new ByteArrayOutputStream()) {
       out.write(INIT);
       out.write(ALIGN_CENTER);
@@ -53,9 +64,18 @@ class EscPosTicketFormatter {
       out.write(BOLD_OFF);
       out.write(("Sucursal: " + branchId + "\n").getBytes(StandardCharsets.US_ASCII));
       out.write(("Orden #: " + orderId + "\n").getBytes(StandardCharsets.US_ASCII));
+      if (tableName != null && !tableName.isBlank()) {
+        out.write(("Mesa: " + tableName + "\n").getBytes(StandardCharsets.US_ASCII));
+      }
+      if (orderType != null && !orderType.isBlank()) {
+        out.write(("Tipo: " + orderType + "\n").getBytes(StandardCharsets.US_ASCII));
+      }
       out.write(
           ("Hora: " + LocalDateTime.now().format(TIME_FORMATTER) + "\n")
               .getBytes(StandardCharsets.US_ASCII));
+      if (notes != null && !notes.isBlank()) {
+        out.write(("Notas: " + notes + "\n").getBytes(StandardCharsets.US_ASCII));
+      }
       out.write("--------------------------------\n".getBytes(StandardCharsets.US_ASCII));
 
       out.write(ALIGN_LEFT);

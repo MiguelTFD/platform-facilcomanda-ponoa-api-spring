@@ -50,4 +50,24 @@ class EscPosTicketFormatterTest {
     String text = new String(bytes, StandardCharsets.US_ASCII);
     assertThat(text).contains("*** CUENTA (CAJA-01) ***");
   }
+
+  @Test
+  @DisplayName("Should format ESC/POS ticket with table name, dining type and notes")
+  void shouldFormatTicketWithTableAndOrderNotes() {
+    byte[] bytes =
+        formatter.formatTicket(
+            1L,
+            100L,
+            PrintDocumentType.KITCHEN_ORDER,
+            "COCINA",
+            "Mesa 4 (Terraza)",
+            "DINE_IN",
+            "Servir todo junto");
+
+    String text = new String(bytes, StandardCharsets.US_ASCII);
+    assertThat(text).contains("*** COCINA ***");
+    assertThat(text).contains("Mesa: Mesa 4 (Terraza)");
+    assertThat(text).contains("Tipo: DINE_IN");
+    assertThat(text).contains("Notas: Servir todo junto");
+  }
 }

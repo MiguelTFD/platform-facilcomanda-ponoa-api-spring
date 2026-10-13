@@ -31,7 +31,10 @@ class PrintJobListener {
               message.branchId(),
               message.orderId(),
               message.documentType(),
-              message.targetArea());
+              message.targetArea(),
+              message.tableName(),
+              message.orderType(),
+              message.notes());
 
       printerClient.print(message.ipAddress(), message.port(), bytes);
 
