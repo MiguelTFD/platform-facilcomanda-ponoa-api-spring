@@ -40,9 +40,30 @@ class EscPosTicketFormatter {
       String tableName,
       String orderType,
       String notes) {
+    return formatTicket(branchId, orderId, documentType, targetArea, tableName, orderType, notes, false);
+  }
+
+  public byte[] formatTicket(
+      Long branchId,
+      Long orderId,
+      PrintDocumentType documentType,
+      String targetArea,
+      String tableName,
+      String orderType,
+      String notes,
+      boolean isReprint) {
     try (ByteArrayOutputStream out = new ByteArrayOutputStream()) {
       out.write(INIT);
       out.write(ALIGN_CENTER);
+
+      if (isReprint) {
+        out.write(BOLD_ON);
+        out.write("================================\n".getBytes(StandardCharsets.US_ASCII));
+        out.write("*** REIMPRESION / DUPLICADO ***\n".getBytes(StandardCharsets.US_ASCII));
+        out.write("================================\n".getBytes(StandardCharsets.US_ASCII));
+        out.write(BOLD_OFF);
+      }
+
       out.write(BOLD_ON);
       out.write(DOUBLE_SIZE);
 

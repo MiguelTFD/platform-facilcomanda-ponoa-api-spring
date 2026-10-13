@@ -6,9 +6,12 @@ import com.facilcomanda.ponoa.printing.payload.PrintCashierReceiptRequest;
 import com.facilcomanda.ponoa.printing.payload.PrintJobResponse;
 import com.facilcomanda.ponoa.printing.payload.PrinterDeviceResponse;
 import com.facilcomanda.ponoa.printing.payload.RegisterPrinterRequest;
+import com.facilcomanda.ponoa.printing.payload.ReprintKitchenOrderRequest;
+import com.facilcomanda.ponoa.printing.payload.ReprintReceiptRequest;
 import jakarta.validation.Valid;
 import java.net.URI;
 import java.util.List;
+import java.util.Map;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -127,5 +130,49 @@ class PrinterController {
             .toList();
 
     return ResponseEntity.ok(jobs);
+  }
+
+  @PostMapping("/kitchen/reprint")
+  public ResponseEntity<Map<String, Object>> reprintKitchenOrder(
+      @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
+      @AuthenticationPrincipal Jwt jwt,
+      @Valid @RequestBody ReprintKitchenOrderRequest request) {
+
+    Long branchId = branchAccessValidator.resolveAndValidateBranchId(jwt, branchIdHeader);
+    List<Long> jobIds =
+        printJobService.reprintKitchenOrder(
+            branchId, request.orderId(), request.productionArea(), request.targetPrinterId());
+
+    return ResponseEntity.accepted().body(Map.of("jobIds", jobIds, "reprinted", true));
+  }
+
+  @PostMapping("/receipts/reprint")
+  public ResponseEntity<Map<String, Object>> reprintReceipt(
+      @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
+      @AuthenticationPrincipal Jwt jwt,
+      @Valid @RequestBody ReprintReceiptRequest request) {
+
+    Long branchId = branchAccessValidator.resolveAndValidateBranchId(jwt, branchIdHeader);
+    Long jobId =
+        printJobService.reprintCashierReceipt(
+            branchId,
+            request.orderId(),
+            request.terminalCode(),
+            request.targetPrinterId(),
+            request.reason());
+
+    return ResponseEntity.accepted().body(Map.of("jobId", jobId, "reprinted", true));
+  }
+
+  @PostMapping("/jobs/{id}/retry")
+  public ResponseEntity<Map<String, Object>> retryJob(
+      @PathVariable Long id,
+      @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
+      @AuthenticationPrincipal Jwt jwt) {
+
+    Long branchId = branchAccessValidator.resolveAndValidateBranchId(jwt, branchIdHeader);
+    Long jobId = printJobService.retryPrintJob(branchId, id);
+
+    return ResponseEntity.accepted().body(Map.of("jobId", jobId, "status", "RETRYING"));
   }
 }

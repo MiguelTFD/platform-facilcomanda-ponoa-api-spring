@@ -4,6 +4,11 @@ import com.facilcomanda.ponoa.catalog.CatalogPriceProvider;
 import com.facilcomanda.ponoa.global.exception.ResourceNotFoundException;
 import com.facilcomanda.ponoa.printing.payload.PrintJobMessage;
 import com.facilcomanda.ponoa.printing.payload.RegisterPrinterRequest;
+import com.facilcomanda.ponoa.sales.CustomerOrderProvider;
+import java.time.Duration;
+import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -16,23 +21,28 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 class PrintJobService {
 
+  public static final long REPRINT_COOLDOWN_SECONDS = 60;
+
   private final PrinterDeviceRepository printerDeviceRepository;
   private final PrinterRouteRepository printerRouteRepository;
   private final PrintJobRepository printJobRepository;
   private final RabbitTemplate rabbitTemplate;
   private final CatalogPriceProvider catalogPriceProvider;
+  private final CustomerOrderProvider customerOrderProvider;
 
   PrintJobService(
       PrinterDeviceRepository printerDeviceRepository,
       PrinterRouteRepository printerRouteRepository,
       PrintJobRepository printJobRepository,
       RabbitTemplate rabbitTemplate,
-      CatalogPriceProvider catalogPriceProvider) {
+      CatalogPriceProvider catalogPriceProvider,
+      CustomerOrderProvider customerOrderProvider) {
     this.printerDeviceRepository = printerDeviceRepository;
     this.printerRouteRepository = printerRouteRepository;
     this.printJobRepository = printJobRepository;
     this.rabbitTemplate = rabbitTemplate;
     this.catalogPriceProvider = catalogPriceProvider;
+    this.customerOrderProvider = customerOrderProvider;
   }
 
   @Transactional
@@ -345,6 +355,292 @@ class PrintJobService {
       return printJobRepository.findAllByBranchIdAndStatus(branchId, status);
     }
     return printJobRepository.findAllByBranchIdAndStatus(branchId, PrintJobStatus.PENDING);
+  }
+
+  private void validateReprintCooldown(
+      Long branchId, Long orderId, PrintDocumentType documentType) {
+    printJobRepository
+        .findLatestJob(branchId, orderId, documentType.name())
+        .ifPresent(
+            latestJob -> {
+              if (latestJob.createdAt() != null) {
+                long secondsElapsed =
+                    Duration.between(latestJob.createdAt(), OffsetDateTime.now()).toSeconds();
+                if (secondsElapsed < REPRINT_COOLDOWN_SECONDS) {
+                  long secondsRemaining = REPRINT_COOLDOWN_SECONDS - secondsElapsed;
+                  throw new PrintCooldownException(secondsRemaining);
+                }
+              }
+            });
+  }
+
+  @Transactional
+  public List<Long> reprintKitchenOrder(
+      Long branchId, Long orderId, String targetProductionArea, Long targetPrinterId) {
+    validateReprintCooldown(branchId, orderId, PrintDocumentType.KITCHEN_ORDER);
+
+    CustomerOrderProvider.OrderPrintSummary orderSummary =
+        customerOrderProvider
+            .getOrderPrintSummary(branchId, orderId)
+            .orElseThrow(
+                () ->
+                    new ResourceNotFoundException(
+                        "Order " + orderId + " not found in branch " + branchId));
+
+    List<PrinterDevice> printersToPrint = new ArrayList<>();
+    Map<Long, String> printerAreaMap = new HashMap<>();
+
+    if (targetPrinterId != null) {
+      PrinterDevice targetPrinter =
+          printerDeviceRepository
+              .findByIdAndBranchId(targetPrinterId, branchId)
+              .filter(p -> Boolean.TRUE.equals(p.isActive()))
+              .orElseThrow(
+                  () ->
+                      new ResourceNotFoundException(
+                          "Printer " + targetPrinterId + " not found or inactive in branch " + branchId));
+      printersToPrint.add(targetPrinter);
+      printerAreaMap.put(
+          targetPrinter.id(),
+          (targetProductionArea != null && !targetProductionArea.isBlank())
+              ? targetProductionArea
+              : "COCINA");
+    } else {
+      Set<String> areas;
+      if (targetProductionArea != null && !targetProductionArea.isBlank()) {
+        areas = Set.of(targetProductionArea);
+      } else if (orderSummary.skuIds() != null && !orderSummary.skuIds().isEmpty()) {
+        Map<Long, String> areaMap =
+            catalogPriceProvider.getProductionAreasForSkus(orderSummary.skuIds());
+        areas = new HashSet<>(areaMap.values());
+        if (areas.isEmpty()) {
+          areas.add("COCINA");
+        }
+      } else {
+        areas = Set.of("COCINA");
+      }
+
+      for (String area : areas) {
+        List<PrinterRoute> matchingRoutes =
+            printerRouteRepository.findMatchingRoutes(
+                branchId, PrintDocumentType.KITCHEN_ORDER.name(), area);
+
+        for (PrinterRoute route : matchingRoutes) {
+          printerDeviceRepository
+              .findByIdAndBranchId(route.printerId(), branchId)
+              .filter(p -> Boolean.TRUE.equals(p.isActive()))
+              .ifPresent(
+                  p -> {
+                    printersToPrint.add(p);
+                    printerAreaMap.put(p.id(), area);
+                  });
+        }
+      }
+    }
+
+    if (printersToPrint.isEmpty()) {
+      throw new ResourceNotFoundException(
+          "No active kitchen printers found for order " + orderId + " in branch " + branchId);
+    }
+
+    List<Long> enqueuedJobIds = new ArrayList<>();
+    for (PrinterDevice printer : printersToPrint) {
+      String area = printerAreaMap.getOrDefault(printer.id(), "COCINA");
+      String idempotencyKey =
+          "REPRINT-ORDER-"
+              + orderId
+              + "-AREA-"
+              + area
+              + "-PRINTER-"
+              + printer.id()
+              + "-TS-"
+              + System.currentTimeMillis();
+
+      PrintJob job =
+          new PrintJob(
+              null,
+              branchId,
+              printer.id(),
+              orderId,
+              PrintDocumentType.KITCHEN_ORDER,
+              idempotencyKey,
+              PrintJobStatus.PENDING,
+              null,
+              0,
+              null,
+              null);
+
+      PrintJob savedJob = printJobRepository.save(job);
+      enqueuedJobIds.add(savedJob.id());
+
+      PrintJobMessage message =
+          new PrintJobMessage(
+              savedJob.id(),
+              branchId,
+              printer.id(),
+              orderId,
+              PrintDocumentType.KITCHEN_ORDER,
+              printer.ipAddress(),
+              printer.port(),
+              area,
+              orderSummary.tableName(),
+              orderSummary.orderType(),
+              orderSummary.notes(),
+              true);
+
+      String routingKey = "printing.branch." + branchId;
+      rabbitTemplate.convertAndSend(PrintingQueueConfig.PRINTING_EXCHANGE, routingKey, message);
+    }
+
+    return enqueuedJobIds;
+  }
+
+  @Transactional
+  public Long reprintCashierReceipt(
+      Long branchId, Long orderId, String terminalCode, Long targetPrinterId, String reason) {
+    validateReprintCooldown(branchId, orderId, PrintDocumentType.CUSTOMER_RECEIPT);
+
+    CustomerOrderProvider.OrderPrintSummary orderSummary =
+        customerOrderProvider
+            .getOrderPrintSummary(branchId, orderId)
+            .orElseThrow(
+                () ->
+                    new ResourceNotFoundException(
+                        "Order " + orderId + " not found in branch " + branchId));
+
+    PrinterDevice printer = null;
+
+    if (targetPrinterId != null) {
+      printer =
+          printerDeviceRepository
+              .findByIdAndBranchId(targetPrinterId, branchId)
+              .filter(p -> Boolean.TRUE.equals(p.isActive()))
+              .orElseThrow(
+                  () ->
+                      new ResourceNotFoundException(
+                          "Printer " + targetPrinterId + " not found or inactive in branch " + branchId));
+    } else if (terminalCode != null && !terminalCode.isBlank()) {
+      printer =
+          printerDeviceRepository
+              .findByBranchIdAndTerminalCodeAndIsActiveTrue(branchId, terminalCode)
+              .orElse(null);
+    }
+
+    if (printer == null) {
+      List<PrinterRoute> routes =
+          printerRouteRepository.findAllByBranchIdAndDocumentType(
+              branchId, PrintDocumentType.CUSTOMER_RECEIPT);
+
+      for (PrinterRoute route : routes) {
+        printer =
+            printerDeviceRepository
+                .findByIdAndBranchId(route.printerId(), branchId)
+                .filter(p -> Boolean.TRUE.equals(p.isActive()))
+                .orElse(null);
+        if (printer != null) {
+          break;
+        }
+      }
+    }
+
+    if (printer == null) {
+      throw new ResourceNotFoundException(
+          "No active printer found for receipt reprint in branch " + branchId);
+    }
+
+    String idempotencyKey =
+        "REPRINT-CASHIER-"
+            + (terminalCode != null ? terminalCode : "PRINTER-" + printer.id())
+            + "-ORDER-"
+            + orderId
+            + "-TS-"
+            + System.currentTimeMillis();
+
+    PrintJob job =
+        new PrintJob(
+            null,
+            branchId,
+            printer.id(),
+            orderId,
+            PrintDocumentType.CUSTOMER_RECEIPT,
+            idempotencyKey,
+            PrintJobStatus.PENDING,
+            null,
+            0,
+            null,
+            null);
+
+    PrintJob savedJob = printJobRepository.save(job);
+
+    PrintJobMessage message =
+        new PrintJobMessage(
+            savedJob.id(),
+            branchId,
+            printer.id(),
+            orderId,
+            PrintDocumentType.CUSTOMER_RECEIPT,
+            printer.ipAddress(),
+            printer.port(),
+            terminalCode,
+            orderSummary.tableName(),
+            orderSummary.orderType(),
+            orderSummary.notes(),
+            true);
+
+    String routingKey = "printing.branch." + branchId;
+    rabbitTemplate.convertAndSend(PrintingQueueConfig.PRINTING_EXCHANGE, routingKey, message);
+
+    return savedJob.id();
+  }
+
+  @Transactional
+  public Long retryPrintJob(Long branchId, Long jobId) {
+    PrintJob job =
+        printJobRepository
+            .findByIdAndBranchId(jobId, branchId)
+            .orElseThrow(
+                () ->
+                    new ResourceNotFoundException(
+                        "PrintJob " + jobId + " not found in branch " + branchId));
+
+    if (!PrintJobStatus.FAILED.equals(job.status())) {
+      throw new IllegalStateException(
+          "Only FAILED jobs can be retried. Job " + jobId + " status is " + job.status());
+    }
+
+    PrinterDevice printer =
+        printerDeviceRepository
+            .findByIdAndBranchId(job.printerId(), branchId)
+            .filter(p -> Boolean.TRUE.equals(p.isActive()))
+            .orElseThrow(
+                () ->
+                    new ResourceNotFoundException(
+                        "Printer " + job.printerId() + " not found or inactive in branch " + branchId));
+
+    CustomerOrderProvider.OrderPrintSummary orderSummary =
+        customerOrderProvider.getOrderPrintSummary(branchId, job.orderId()).orElse(null);
+
+    printJobRepository.resetJobForRetry(jobId, branchId);
+
+    PrintJobMessage message =
+        new PrintJobMessage(
+            job.id(),
+            branchId,
+            printer.id(),
+            job.orderId(),
+            job.documentType(),
+            printer.ipAddress(),
+            printer.port(),
+            null,
+            orderSummary != null ? orderSummary.tableName() : null,
+            orderSummary != null ? orderSummary.orderType() : "DINE_IN",
+            orderSummary != null ? orderSummary.notes() : null,
+            false);
+
+    String routingKey = "printing.branch." + branchId;
+    rabbitTemplate.convertAndSend(PrintingQueueConfig.PRINTING_EXCHANGE, routingKey, message);
+
+    return job.id();
   }
 }
 

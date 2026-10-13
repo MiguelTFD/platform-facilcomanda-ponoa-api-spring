@@ -198,4 +198,42 @@ class OrderServiceTest {
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("ya está ocupada o no se encuentra disponible");
   }
+
+  @Test
+  @DisplayName("Should return order print summary with resolved table name and skuIds")
+  void shouldReturnOrderPrintSummary() {
+    Long branchId = 1L;
+    Long orderId = 88L;
+    Long tableId = 3L;
+
+    CustomerOrder order =
+        new CustomerOrder(
+            orderId,
+            branchId,
+            UUID.randomUUID(),
+            "key-1",
+            tableId,
+            "DINE_IN",
+            "Mesa cerca a ventana",
+            new BigDecimal("40.00"),
+            "PENDING",
+            Set.of(new OrderItem(101L, 2, new BigDecimal("20.00"), "Sin cebolla")));
+
+    when(orderRepository.findByIdAndBranchId(orderId, branchId)).thenReturn(Optional.of(order));
+    RestaurantTableView tableView =
+        new RestaurantTableView(tableId, branchId, 1L, "Mesa 3", "Salon", TableState.OCCUPIED);
+    when(restaurantTableProvider.findTableByIdAndBranch(tableId, branchId))
+        .thenReturn(Optional.of(tableView));
+
+    Optional<CustomerOrderProvider.OrderPrintSummary> result =
+        orderService.getOrderPrintSummary(branchId, orderId);
+
+    assertThat(result).isPresent();
+    CustomerOrderProvider.OrderPrintSummary summary = result.get();
+    assertThat(summary.orderId()).isEqualTo(orderId);
+    assertThat(summary.tableName()).isEqualTo("Mesa 3");
+    assertThat(summary.orderType()).isEqualTo("DINE_IN");
+    assertThat(summary.notes()).isEqualTo("Mesa cerca a ventana");
+    assertThat(summary.skuIds()).containsExactly(101L);
+  }
 }

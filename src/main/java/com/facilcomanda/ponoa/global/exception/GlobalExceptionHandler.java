@@ -33,6 +33,17 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     return problemDetail;
   }
 
+  @ExceptionHandler(com.facilcomanda.ponoa.printing.PrintCooldownException.class)
+  ProblemDetail handlePrintCooldown(com.facilcomanda.ponoa.printing.PrintCooldownException ex) {
+    ProblemDetail problemDetail =
+        ProblemDetail.forStatusAndDetail(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage());
+    problemDetail.setTitle("Cooldown de Reimpresion Activo");
+    problemDetail.setType(URI.create("https://api.facilcomanda.com/errors/cooldown"));
+    problemDetail.setProperty("secondsRemaining", ex.getSecondsRemaining());
+    problemDetail.setProperty("timestamp", Instant.now());
+    return problemDetail;
+  }
+
   @ExceptionHandler(Exception.class)
   ProblemDetail handleGenericException(Exception ex) {
     ProblemDetail problemDetail =

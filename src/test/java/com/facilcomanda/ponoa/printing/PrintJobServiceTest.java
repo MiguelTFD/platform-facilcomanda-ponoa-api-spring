@@ -12,6 +12,8 @@ import static org.mockito.Mockito.when;
 import com.facilcomanda.ponoa.catalog.CatalogPriceProvider;
 import com.facilcomanda.ponoa.printing.payload.PrintJobMessage;
 import com.facilcomanda.ponoa.printing.payload.RegisterPrinterRequest;
+import com.facilcomanda.ponoa.sales.CustomerOrderProvider;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -34,6 +36,7 @@ class PrintJobServiceTest {
   @Mock private PrintJobRepository printJobRepository;
   @Mock private RabbitTemplate rabbitTemplate;
   @Mock private CatalogPriceProvider catalogPriceProvider;
+  @Mock private CustomerOrderProvider customerOrderProvider;
 
   @InjectMocks private PrintJobService printJobService;
 
@@ -271,5 +274,219 @@ class PrintJobServiceTest {
     verify(printJobRepository, never()).save(any(PrintJob.class));
     verify(rabbitTemplate, never())
         .convertAndSend(any(), any(), any(PrintJobMessage.class));
+  }
+
+  @Test
+  @DisplayName("Cooldown Rule: throws PrintCooldownException when reprint is requested within 1 minute of last print")
+  void shouldThrowCooldownExceptionWhenReprintingTooSoon() {
+    Long branchId = 1L;
+    Long orderId = 100L;
+
+    PrintJob recentJob =
+        new PrintJob(
+            1L,
+            branchId,
+            10L,
+            orderId,
+            PrintDocumentType.KITCHEN_ORDER,
+            "KEY-1",
+            PrintJobStatus.COMPLETED,
+            null,
+            0,
+            OffsetDateTime.now().minusSeconds(25),
+            null);
+
+    when(printJobRepository.findLatestJob(branchId, orderId, "KITCHEN_ORDER"))
+        .thenReturn(Optional.of(recentJob));
+
+    assertThatThrownBy(() -> printJobService.reprintKitchenOrder(branchId, orderId, null, null))
+        .isInstanceOf(PrintCooldownException.class)
+        .hasMessageContaining("Debes esperar al menos 1 minuto antes de realizar una reimpresion");
+
+    verify(printJobRepository, never()).save(any(PrintJob.class));
+    verify(rabbitTemplate, never()).convertAndSend(any(), any(), any(PrintJobMessage.class));
+  }
+
+  @Test
+  @DisplayName("Reprint Kitchen: enqueues reprint with isReprint=true and unique timestamp key after cooldown")
+  void shouldReprintKitchenOrderSuccessfullyAfterCooldown() {
+    Long branchId = 1L;
+    Long orderId = 100L;
+
+    PrintJob oldJob =
+        new PrintJob(
+            1L,
+            branchId,
+            10L,
+            orderId,
+            PrintDocumentType.KITCHEN_ORDER,
+            "KEY-1",
+            PrintJobStatus.COMPLETED,
+            null,
+            0,
+            OffsetDateTime.now().minusSeconds(70),
+            null);
+
+    when(printJobRepository.findLatestJob(branchId, orderId, "KITCHEN_ORDER"))
+        .thenReturn(Optional.of(oldJob));
+
+    CustomerOrderProvider.OrderPrintSummary summary =
+        new CustomerOrderProvider.OrderPrintSummary(
+            orderId, branchId, 5L, "Mesa 5", "DINE_IN", "Sin sal", Set.of(10L));
+    when(customerOrderProvider.getOrderPrintSummary(branchId, orderId))
+        .thenReturn(Optional.of(summary));
+
+    when(catalogPriceProvider.getProductionAreasForSkus(Set.of(10L)))
+        .thenReturn(Map.of(10L, "COCINA"));
+
+    PrinterDevice kitchenPrinter =
+        new PrinterDevice(
+            10L, branchId, "Ticketera Cocina", "192.168.1.50", 9100, "TCP", null, true, null, null);
+    PrinterRoute route =
+        new PrinterRoute(1L, branchId, 10L, PrintDocumentType.KITCHEN_ORDER, "COCINA", null);
+
+    when(printerRouteRepository.findMatchingRoutes(branchId, "KITCHEN_ORDER", "COCINA"))
+        .thenReturn(List.of(route));
+    when(printerDeviceRepository.findByIdAndBranchId(10L, branchId))
+        .thenReturn(Optional.of(kitchenPrinter));
+
+    when(printJobRepository.save(any(PrintJob.class)))
+        .thenAnswer(inv -> {
+          PrintJob arg = inv.getArgument(0);
+          return new PrintJob(
+              999L,
+              arg.branchId(),
+              arg.printerId(),
+              arg.orderId(),
+              arg.documentType(),
+              arg.idempotencyKey(),
+              arg.status(),
+              arg.errorMessage(),
+              arg.retryCount(),
+              null,
+              null);
+        });
+
+    List<Long> result = printJobService.reprintKitchenOrder(branchId, orderId, null, null);
+
+    assertThat(result).containsExactly(999L);
+
+    ArgumentCaptor<PrintJobMessage> captor = ArgumentCaptor.forClass(PrintJobMessage.class);
+    verify(rabbitTemplate)
+        .convertAndSend(
+            eq(PrintingQueueConfig.PRINTING_EXCHANGE),
+            eq("printing.branch.1"),
+            captor.capture());
+
+    PrintJobMessage sent = captor.getValue();
+    assertThat(sent.isReprint()).isTrue();
+    assertThat(sent.tableName()).isEqualTo("Mesa 5");
+    assertThat(sent.notes()).isEqualTo("Sin sal");
+  }
+
+  @Test
+  @DisplayName("Reprint Receipt: enqueues receipt reprint with isReprint=true")
+  void shouldReprintReceiptSuccessfully() {
+    Long branchId = 1L;
+    Long orderId = 200L;
+
+    when(printJobRepository.findLatestJob(branchId, orderId, "CUSTOMER_RECEIPT"))
+        .thenReturn(Optional.empty());
+
+    CustomerOrderProvider.OrderPrintSummary summary =
+        new CustomerOrderProvider.OrderPrintSummary(
+            orderId, branchId, 2L, "Mesa 2", "DINE_IN", null, Set.of());
+    when(customerOrderProvider.getOrderPrintSummary(branchId, orderId))
+        .thenReturn(Optional.of(summary));
+
+    PrinterDevice cajaPrinter =
+        new PrinterDevice(
+            20L, branchId, "Caja 1", "192.168.1.100", 9100, "TCP", "CAJA-01", true, null, null);
+    when(printerDeviceRepository.findByBranchIdAndTerminalCodeAndIsActiveTrue(branchId, "CAJA-01"))
+        .thenReturn(Optional.of(cajaPrinter));
+
+    when(printJobRepository.save(any(PrintJob.class)))
+        .thenAnswer(inv -> {
+          PrintJob arg = inv.getArgument(0);
+          return new PrintJob(
+              888L,
+              arg.branchId(),
+              arg.printerId(),
+              arg.orderId(),
+              arg.documentType(),
+              arg.idempotencyKey(),
+              arg.status(),
+              arg.errorMessage(),
+              arg.retryCount(),
+              null,
+              null);
+        });
+
+    Long jobId = printJobService.reprintCashierReceipt(branchId, orderId, "CAJA-01", null, "Cliente solicito copia");
+
+    assertThat(jobId).isEqualTo(888L);
+
+    ArgumentCaptor<PrintJobMessage> captor = ArgumentCaptor.forClass(PrintJobMessage.class);
+    verify(rabbitTemplate)
+        .convertAndSend(
+            eq(PrintingQueueConfig.PRINTING_EXCHANGE),
+            eq("printing.branch.1"),
+            captor.capture());
+
+    PrintJobMessage sent = captor.getValue();
+    assertThat(sent.isReprint()).isTrue();
+    assertThat(sent.printerId()).isEqualTo(20L);
+  }
+
+  @Test
+  @DisplayName("Retry Job: resets FAILED job and re-publishes to RabbitMQ")
+  void shouldRetryFailedPrintJob() {
+    Long branchId = 1L;
+    Long jobId = 77L;
+
+    PrintJob failedJob =
+        new PrintJob(
+            jobId,
+            branchId,
+            15L,
+            300L,
+            PrintDocumentType.KITCHEN_ORDER,
+            "KEY-FAILED",
+            PrintJobStatus.FAILED,
+            "Connection timeout",
+            2,
+            null,
+            null);
+
+    when(printJobRepository.findByIdAndBranchId(jobId, branchId))
+        .thenReturn(Optional.of(failedJob));
+
+    PrinterDevice printer =
+        new PrinterDevice(
+            15L, branchId, "Cocina", "192.168.1.50", 9100, "TCP", null, true, null, null);
+    when(printerDeviceRepository.findByIdAndBranchId(15L, branchId))
+        .thenReturn(Optional.of(printer));
+
+    CustomerOrderProvider.OrderPrintSummary summary =
+        new CustomerOrderProvider.OrderPrintSummary(
+            300L, branchId, 1L, "Mesa 1", "DINE_IN", null, Set.of());
+    when(customerOrderProvider.getOrderPrintSummary(branchId, 300L))
+        .thenReturn(Optional.of(summary));
+
+    Long retriedId = printJobService.retryPrintJob(branchId, jobId);
+
+    assertThat(retriedId).isEqualTo(jobId);
+    verify(printJobRepository).resetJobForRetry(jobId, branchId);
+
+    ArgumentCaptor<PrintJobMessage> captor = ArgumentCaptor.forClass(PrintJobMessage.class);
+    verify(rabbitTemplate)
+        .convertAndSend(
+            eq(PrintingQueueConfig.PRINTING_EXCHANGE),
+            eq("printing.branch.1"),
+            captor.capture());
+
+    PrintJobMessage sent = captor.getValue();
+    assertThat(sent.jobId()).isEqualTo(jobId);
+    assertThat(sent.ipAddress()).isEqualTo("192.168.1.50");
   }
 }

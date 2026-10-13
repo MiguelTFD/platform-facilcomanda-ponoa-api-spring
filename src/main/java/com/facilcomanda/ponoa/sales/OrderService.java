@@ -9,6 +9,7 @@ import com.facilcomanda.ponoa.table.TableState;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -17,7 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-class OrderService {
+class OrderService implements CustomerOrderProvider {
 
   private final OrderRepository orderRepository;
   private final CatalogPriceProvider catalogPriceProvider;
@@ -156,5 +157,37 @@ class OrderService {
   @Transactional(readOnly = true)
   public List<CustomerOrder> getOrdersByBranch(Long branchId) {
     return orderRepository.findAllByBranchId(branchId);
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public Optional<CustomerOrderProvider.OrderPrintSummary> getOrderPrintSummary(
+      Long branchId, Long orderId) {
+    return orderRepository
+        .findByIdAndBranchId(orderId, branchId)
+        .map(
+            order -> {
+              String tableName = null;
+              if (order.tableId() != null) {
+                tableName =
+                    restaurantTableProvider
+                        .findTableByIdAndBranch(order.tableId(), branchId)
+                        .map(RestaurantTableView::tableName)
+                        .orElse(null);
+              }
+              Set<Long> skuIds =
+                  order.items() != null
+                      ? order.items().stream().map(OrderItem::skuId).collect(Collectors.toSet())
+                      : Set.of();
+
+              return new CustomerOrderProvider.OrderPrintSummary(
+                  order.id(),
+                  order.branchId(),
+                  order.tableId(),
+                  tableName,
+                  order.orderType(),
+                  order.notes(),
+                  skuIds);
+            });
   }
 }

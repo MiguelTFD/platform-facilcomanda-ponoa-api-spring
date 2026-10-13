@@ -70,4 +70,25 @@ class EscPosTicketFormatterTest {
     assertThat(text).contains("Tipo: DINE_IN");
     assertThat(text).contains("Notas: Servir todo junto");
   }
+
+  @Test
+  @DisplayName("Should format ESC/POS ticket with reprint banner when isReprint is true")
+  void shouldFormatTicketWithReprintBanner() {
+    byte[] bytes =
+        formatter.formatTicket(
+            1L,
+            100L,
+            PrintDocumentType.KITCHEN_ORDER,
+            "COCINA",
+            "Mesa 4",
+            "DINE_IN",
+            null,
+            true);
+
+    String text = new String(bytes, StandardCharsets.US_ASCII);
+    assertThat(text).contains("*** REIMPRESION / DUPLICADO ***");
+    assertThat(text).contains("================================");
+    assertThat(text).contains("*** COCINA ***");
+    assertThat(text).contains("Mesa: Mesa 4");
+  }
 }

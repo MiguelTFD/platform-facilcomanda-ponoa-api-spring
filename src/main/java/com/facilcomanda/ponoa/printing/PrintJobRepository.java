@@ -34,4 +34,21 @@ interface PrintJobRepository extends CrudRepository<PrintJob, Long> {
       @Param("printerId") Long printerId,
       @Param("documentType") String documentType,
       @Param("idempotencyKey") String idempotencyKey);
+
+  @Query(
+      "SELECT * FROM print_jobs "
+          + "WHERE branch_id = :branchId AND order_id = :orderId AND document_type = :documentType "
+          + "ORDER BY created_at DESC LIMIT 1")
+  Optional<PrintJob> findLatestJob(
+      @Param("branchId") Long branchId,
+      @Param("orderId") Long orderId,
+      @Param("documentType") String documentType);
+
+  @Modifying
+  @Query(
+      "UPDATE print_jobs SET status = 'PENDING', error_message = null, retry_count = retry_count + 1, updated_at = NOW() "
+          + "WHERE id = :id AND branch_id = :branchId")
+  int resetJobForRetry(
+      @Param("id") Long id,
+      @Param("branchId") Long branchId);
 }
