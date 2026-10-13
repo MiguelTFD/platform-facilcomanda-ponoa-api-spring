@@ -2,6 +2,7 @@ package com.facilcomanda.ponoa.inventory;
 
 import com.facilcomanda.ponoa.global.exception.InsufficientStockException;
 import com.facilcomanda.ponoa.global.exception.ResourceNotFoundException;
+import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -15,36 +16,46 @@ public class StockService {
   }
 
   @Transactional
-  public void initializeSkuStock(Long skuId, int initialQuantity) {
-    stockRepository.initializeStock(skuId, initialQuantity);
+  public void initializeSkuStock(Long branchId, Long skuId, int initialQuantity) {
+    stockRepository.upsertStock(branchId, skuId, initialQuantity);
   }
 
   @Transactional
-  public void deductStock(Long skuId, int amount) {
-    int rowsAffected = stockRepository.deductStockAtomic(skuId, amount);
+  public void deductStock(Long branchId, Long skuId, int amount) {
+    int rowsAffected = stockRepository.deductStockAtomic(branchId, skuId, amount);
 
     if (rowsAffected == 0) {
-      boolean exists = stockRepository.existsById(skuId);
+      boolean exists = stockRepository.existsByBranchIdAndSkuId(branchId, skuId);
       if (!exists) {
-        throw new ResourceNotFoundException("SKU " + skuId + " is not in stock.");
+        throw new ResourceNotFoundException(
+            "SKU " + skuId + " is not registered in stock for branch " + branchId);
       }
-      throw new InsufficientStockException("Insufficient stock for SKU: " + skuId);
+      throw new InsufficientStockException(
+          "Insufficient stock for SKU " + skuId + " in branch " + branchId);
     }
   }
 
   @Transactional
-  public void addStock(Long skuId, int amount) {
-    int rowsAffected = stockRepository.addStockAtomic(skuId, amount);
+  public void addStock(Long branchId, Long skuId, int amount) {
+    int rowsAffected = stockRepository.addStockAtomic(branchId, skuId, amount);
     if (rowsAffected == 0) {
-      // TODO: add a custom stock throws exception
-      throw new ResourceNotFoundException("SKU " + skuId + " is not in stock.");
+      throw new ResourceNotFoundException(
+          "SKU " + skuId + " is not registered in stock for branch " + branchId);
     }
   }
 
   @Transactional(readOnly = true)
-  public StockLevel getStock(Long skuId) {
+  public StockLevel getStock(Long branchId, Long skuId) {
     return stockRepository
-        .findById(skuId)
-        .orElseThrow(() -> new ResourceNotFoundException("Inventory not found for SKU: " + skuId));
+        .findByBranchIdAndSkuId(branchId, skuId)
+        .orElseThrow(
+            () ->
+                new ResourceNotFoundException(
+                    "Stock not found for SKU " + skuId + " in branch " + branchId));
+  }
+
+  @Transactional(readOnly = true)
+  public List<StockLevel> getStockByBranch(Long branchId) {
+    return stockRepository.findAllByBranchId(branchId);
   }
 }

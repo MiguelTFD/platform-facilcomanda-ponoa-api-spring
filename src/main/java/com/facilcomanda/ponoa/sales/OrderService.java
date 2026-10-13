@@ -61,7 +61,7 @@ class OrderService {
                         "El SKU " + payload.skuId() + " is unavailable or does not exist.");
                   }
 
-                  stockService.deductStock(payload.skuId(), payload.quantity());
+                  stockService.deductStock(branchId, payload.skuId(), payload.quantity());
 
                   return new OrderItem(payload.skuId(), payload.quantity(), unitPrice);
                 })
