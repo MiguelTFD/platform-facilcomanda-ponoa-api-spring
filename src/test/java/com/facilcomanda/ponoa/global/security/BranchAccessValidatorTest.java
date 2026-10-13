@@ -7,6 +7,8 @@ import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.access.AccessDeniedException;
@@ -83,5 +85,33 @@ class BranchAccessValidatorTest {
     assertThatThrownBy(() -> validator.resolveAndValidateBranchId(jwt, null))
         .isInstanceOf(AccessDeniedException.class)
         .hasMessageContaining("Multiple branches available");
+  }
+
+  @Test
+  @DisplayName("Should allow EMPRESA to access any requested branch without token branch claim")
+  void shouldAllowEmpresaAccessAnyBranch() {
+    Jwt jwt =
+        createJwtWithClaims(
+            Map.of(
+                "sub", UUID.randomUUID().toString(),
+                "realm_access", Map.of("roles", List.of("EMPRESA"))));
+
+    Long branchId = validator.resolveAndValidateBranchId(jwt, 99L);
+
+    assertThat(branchId).isEqualTo(99L);
+  }
+
+  @Test
+  @DisplayName("Should fallback to UserBranchResolver when token lacks branch claims")
+  void shouldFallbackToUserBranchResolver() {
+    UUID userId = UUID.randomUUID();
+    UserBranchResolver mockResolver = id -> id.equals(userId) ? Optional.of(42L) : Optional.empty();
+    BranchAccessValidator resolverValidator = new BranchAccessValidator(Optional.of(mockResolver));
+
+    Jwt jwt = createJwtWithClaims(Map.of("sub", userId.toString()));
+
+    Long branchId = resolverValidator.resolveAndValidateBranchId(jwt, null);
+
+    assertThat(branchId).isEqualTo(42L);
   }
 }

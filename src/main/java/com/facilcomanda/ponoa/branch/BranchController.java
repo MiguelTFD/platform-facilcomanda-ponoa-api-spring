@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 @RestController
@@ -25,6 +26,7 @@ class BranchController {
   }
 
   @PostMapping
+  @PreAuthorize("hasRole('EMPRESA')")
   public ResponseEntity<Void> createBranch(@Valid @RequestBody CreateBranchRequest request) {
     Long branchId = branchService.createBranch(request);
 

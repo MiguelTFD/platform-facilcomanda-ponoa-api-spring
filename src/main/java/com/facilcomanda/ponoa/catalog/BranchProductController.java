@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -27,6 +28,33 @@ class BranchProductController {
       BranchAccessValidator branchAccessValidator) {
     this.branchProductService = branchProductService;
     this.branchAccessValidator = branchAccessValidator;
+  }
+
+  @PutMapping("/products")
+  public ResponseEntity<Void> configureBranchProductInherited(
+      @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
+      @AuthenticationPrincipal Jwt jwt,
+      @Valid @RequestBody ConfigureBranchProductRequest request) {
+
+    Long branchId = branchAccessValidator.resolveAndValidateBranchId(jwt, branchIdHeader);
+    branchProductService.configureBranchProduct(
+        branchId, request.skuId(), request.price(), request.isAvailable());
+
+    return ResponseEntity.ok().build();
+  }
+
+  @GetMapping("/products")
+  public ResponseEntity<List<BranchProductResponse>> getBranchProductsInherited(
+      @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
+      @AuthenticationPrincipal Jwt jwt) {
+
+    Long branchId = branchAccessValidator.resolveAndValidateBranchId(jwt, branchIdHeader);
+    List<BranchProductResponse> list =
+        branchProductService.getBranchProducts(branchId).stream()
+            .map(this::toResponse)
+            .toList();
+
+    return ResponseEntity.ok(list);
   }
 
   @PutMapping("/{branchId}/products")

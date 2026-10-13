@@ -9,12 +9,24 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-class BranchService {
+class BranchService implements BranchProvider {
 
   private final BranchRepository branchRepository;
 
   BranchService(BranchRepository branchRepository) {
     this.branchRepository = branchRepository;
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public boolean existsBranch(Long branchId) {
+    return branchId != null && branchRepository.existsById(branchId);
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public boolean isBranchActive(Long branchId) {
+    return branchId != null && branchRepository.findById(branchId).map(Branch::isActive).orElse(false);
   }
 
   @Transactional
