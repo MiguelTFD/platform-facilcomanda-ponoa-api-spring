@@ -314,4 +314,50 @@ class OrderService implements CustomerOrderProvider {
                   skuIds);
             });
   }
+
+  @Override
+  @Transactional(readOnly = true)
+  public Optional<CustomerOrderProvider.OrderBillingSummary> getOrderBillingSummary(
+      Long branchId, Long orderId) {
+    return orderRepository
+        .findByIdAndBranchId(orderId, branchId)
+        .map(
+            order -> {
+              String tableName = null;
+              if (order.tableId() != null) {
+                tableName =
+                    restaurantTableProvider
+                        .findTableByIdAndBranch(order.tableId(), branchId)
+                        .map(RestaurantTableView::tableName)
+                        .orElse(null);
+              }
+
+              return new CustomerOrderProvider.OrderBillingSummary(
+                  order.id(),
+                  order.branchId(),
+                  order.tableId(),
+                  tableName,
+                  order.orderType(),
+                  order.totalAmount(),
+                  order.status());
+            });
+  }
+
+  @Override
+  @Transactional
+  public void markOrderAsPaid(Long branchId, Long orderId) {
+    CustomerOrder order =
+        orderRepository
+            .findByIdAndBranchId(orderId, branchId)
+            .orElseThrow(
+                () ->
+                    new ResourceNotFoundException(
+                        "Order " + orderId + " not found in branch " + branchId));
+
+    orderRepository.updateStatus(orderId, branchId, "PAID");
+
+    if (order.tableId() != null) {
+      restaurantTableProvider.updateTableState(order.tableId(), branchId, TableState.AVAILABLE);
+    }
+  }
 }
