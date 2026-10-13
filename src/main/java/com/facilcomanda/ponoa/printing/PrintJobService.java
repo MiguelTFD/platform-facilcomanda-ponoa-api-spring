@@ -188,6 +188,94 @@ class PrintJobService {
   }
 
   @Transactional
+  public void enqueueKitchenPrintJobsForAddition(
+      Long branchId,
+      Long orderId,
+      Set<Long> addedSkuIds,
+      String tableName,
+      String orderType,
+      String additionNotes) {
+    Set<String> productionAreas;
+    if (addedSkuIds != null && !addedSkuIds.isEmpty()) {
+      Map<Long, String> areaMap = catalogPriceProvider.getProductionAreasForSkus(addedSkuIds);
+      productionAreas = new HashSet<>(areaMap.values());
+      if (productionAreas.isEmpty()) {
+        productionAreas.add("COCINA");
+      }
+    } else {
+      productionAreas = Set.of("COCINA");
+    }
+
+    for (String area : productionAreas) {
+      List<PrinterRoute> matchingRoutes =
+          printerRouteRepository.findMatchingRoutes(
+              branchId, PrintDocumentType.KITCHEN_ORDER.name(), area);
+
+      for (PrinterRoute route : matchingRoutes) {
+        PrinterDevice printer =
+            printerDeviceRepository
+                .findByIdAndBranchId(route.printerId(), branchId)
+                .filter(p -> Boolean.TRUE.equals(p.isActive()))
+                .orElse(null);
+
+        if (printer == null) {
+          continue;
+        }
+
+        String idempotencyKey =
+            "ORDER-"
+                + orderId
+                + "-ADDITION-AREA-"
+                + area
+                + "-PRINTER-"
+                + printer.id()
+                + "-TS-"
+                + System.currentTimeMillis();
+
+        PrintJob job =
+            new PrintJob(
+                null,
+                branchId,
+                printer.id(),
+                orderId,
+                PrintDocumentType.KITCHEN_ORDER,
+                idempotencyKey,
+                PrintJobStatus.PENDING,
+                null,
+                0,
+                null,
+                null);
+
+        try {
+          PrintJob savedJob = printJobRepository.save(job);
+
+          PrintJobMessage message =
+              new PrintJobMessage(
+                  savedJob.id(),
+                  branchId,
+                  printer.id(),
+                  orderId,
+                  PrintDocumentType.KITCHEN_ORDER,
+                  printer.ipAddress(),
+                  printer.port(),
+                  area,
+                  tableName,
+                  orderType,
+                  additionNotes,
+                  false,
+                  true);
+
+          String routingKey = "printing.branch." + branchId;
+          rabbitTemplate.convertAndSend(
+              PrintingQueueConfig.PRINTING_EXCHANGE, routingKey, message);
+        } catch (DuplicateKeyException ex) {
+          // Idempotent duplicate safely ignored
+        }
+      }
+    }
+  }
+
+  @Transactional
   public void enqueuePrintJobsForOrder(
       Long branchId, Long orderId, PrintDocumentType documentType) {
     if (PrintDocumentType.KITCHEN_ORDER.equals(documentType)) {

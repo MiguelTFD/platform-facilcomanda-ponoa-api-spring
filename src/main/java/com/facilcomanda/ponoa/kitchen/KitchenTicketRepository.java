@@ -25,4 +25,12 @@ interface KitchenTicketRepository extends CrudRepository<KitchenTicket, Long> {
       @Param("id") Long id,
       @Param("branchId") Long branchId,
       @Param("status") String status);
+
+  @Modifying
+  @Query("UPDATE kitchen_tickets SET notes = :notes, status = :status, updated_at = NOW() WHERE id = :id AND branch_id = :branchId")
+  int updateNotesAndStatus(
+      @Param("id") Long id,
+      @Param("branchId") Long branchId,
+      @Param("notes") String notes,
+      @Param("status") String status);
 }

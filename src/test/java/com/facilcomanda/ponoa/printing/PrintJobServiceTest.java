@@ -489,4 +489,63 @@ class PrintJobServiceTest {
     assertThat(sent.jobId()).isEqualTo(jobId);
     assertThat(sent.ipAddress()).isEqualTo("192.168.1.50");
   }
+
+  @Test
+  @DisplayName("Incremental Additions: enqueues print job ONLY to station of added item with isAddition=true")
+  void shouldEnqueueAdditionOnlyToTargetStationWithAdditionBanner() {
+    Long branchId = 1L;
+    Long orderId = 999L;
+    Set<Long> addedSkuIds = Set.of(20L);
+
+    when(catalogPriceProvider.getProductionAreasForSkus(addedSkuIds))
+        .thenReturn(Map.of(20L, "PARRILLA"));
+
+    PrinterDevice grillPrinter =
+        new PrinterDevice(102L, branchId, "Ticketera Parrilla", "192.168.1.51", 9100, "TCP", null, true, null, null);
+    PrinterRoute routeGrill =
+        new PrinterRoute(2L, branchId, 102L, PrintDocumentType.KITCHEN_ORDER, "PARRILLA", null);
+
+    when(printerRouteRepository.findMatchingRoutes(branchId, "KITCHEN_ORDER", "PARRILLA"))
+        .thenReturn(List.of(routeGrill));
+    when(printerDeviceRepository.findByIdAndBranchId(102L, branchId))
+        .thenReturn(Optional.of(grillPrinter));
+
+    when(printJobRepository.save(any(PrintJob.class)))
+        .thenAnswer(inv -> {
+          PrintJob arg = inv.getArgument(0);
+          return new PrintJob(
+              777L,
+              arg.branchId(),
+              arg.printerId(),
+              arg.orderId(),
+              arg.documentType(),
+              arg.idempotencyKey(),
+              arg.status(),
+              arg.errorMessage(),
+              arg.retryCount(),
+              null,
+              null);
+        });
+
+    printJobService.enqueueKitchenPrintJobsForAddition(
+        branchId, orderId, addedSkuIds, "Mesa 4", "DINE_IN", "Ronda 2: solo parrilla");
+
+    ArgumentCaptor<PrintJobMessage> messageCaptor = ArgumentCaptor.forClass(PrintJobMessage.class);
+    verify(rabbitTemplate)
+        .convertAndSend(
+            eq(PrintingQueueConfig.PRINTING_EXCHANGE),
+            eq("printing.branch.1"),
+            messageCaptor.capture());
+
+    PrintJobMessage sent = messageCaptor.getValue();
+    assertThat(sent.printerId()).isEqualTo(102L);
+    assertThat(sent.targetArea()).isEqualTo("PARRILLA");
+    assertThat(sent.isAddition()).isTrue();
+    assertThat(sent.isReprint()).isFalse();
+    assertThat(sent.notes()).isEqualTo("Ronda 2: solo parrilla");
+    assertThat(sent.tableName()).isEqualTo("Mesa 4");
+
+    verify(printerRouteRepository, never())
+        .findMatchingRoutes(branchId, "KITCHEN_ORDER", "COCINA");
+  }
 }

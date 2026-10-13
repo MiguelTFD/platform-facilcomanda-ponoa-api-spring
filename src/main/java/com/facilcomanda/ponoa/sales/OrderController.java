@@ -69,4 +69,17 @@ class OrderController {
     Long branchId = branchAccessValidator.resolveAndValidateBranchId(jwt, branchIdHeader);
     return ResponseEntity.ok(orderService.getOrdersByBranch(branchId));
   }
+
+  @PostMapping("/{id}/items")
+  public ResponseEntity<Void> addItems(
+      @PathVariable Long id,
+      @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
+      @AuthenticationPrincipal Jwt jwt,
+      @Valid @RequestBody AddOrderItemsRequest request) {
+
+    Long branchId = branchAccessValidator.resolveAndValidateBranchId(jwt, branchIdHeader);
+    orderService.addItemsToOrder(branchId, id, request);
+
+    return ResponseEntity.ok().build();
+  }
 }

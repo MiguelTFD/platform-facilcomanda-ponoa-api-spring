@@ -236,4 +236,94 @@ class OrderServiceTest {
     assertThat(summary.notes()).isEqualTo("Mesa cerca a ventana");
     assertThat(summary.skuIds()).containsExactly(101L);
   }
+
+  @Test
+  @DisplayName("Should add incremental items to existing order, merge quantities, deduct stock and publish event")
+  void shouldAddItemsToOrderSuccessfully() {
+    Long branchId = 1L;
+    Long orderId = 10L;
+    Long tableId = 3L;
+
+    CustomerOrder existingOrder =
+        new CustomerOrder(
+            orderId,
+            branchId,
+            UUID.randomUUID(),
+            "key-orig",
+            tableId,
+            "DINE_IN",
+            "Mesa 3",
+            new BigDecimal("20.00"),
+            "PENDING",
+            Set.of(new OrderItem(101L, 1, new BigDecimal("20.00"), "Sin cebolla")));
+
+    when(orderRepository.findByIdAndBranchId(orderId, branchId)).thenReturn(Optional.of(existingOrder));
+
+    AddOrderItemsRequest request =
+        new AddOrderItemsRequest(
+            Set.of(
+                new AddOrderItemsRequest.OrderItemPayload(101L, 1, "Uno mas"),
+                new AddOrderItemsRequest.OrderItemPayload(102L, 2, "Bien helada")),
+            "Ronda 2");
+
+    when(catalogPriceProvider.getAvailablePrices(branchId, Set.of(101L, 102L)))
+        .thenReturn(Map.of(101L, new BigDecimal("20.00"), 102L, new BigDecimal("15.00")));
+
+    RestaurantTableView tableView =
+        new RestaurantTableView(tableId, branchId, 1L, "Mesa 3", "Salon", TableState.OCCUPIED);
+    when(restaurantTableProvider.findTableByIdAndBranch(tableId, branchId))
+        .thenReturn(Optional.of(tableView));
+
+    orderService.addItemsToOrder(branchId, orderId, request);
+
+    // Stock deducted for newly added items
+    verify(stockService).deductStock(branchId, 101L, 1);
+    verify(stockService).deductStock(branchId, 102L, 2);
+
+    // Order saved with updated total: 20.00 + 20.00 + (15.00 * 2) = 70.00
+    ArgumentCaptor<CustomerOrder> orderCaptor = ArgumentCaptor.forClass(CustomerOrder.class);
+    verify(orderRepository).save(orderCaptor.capture());
+    CustomerOrder savedOrder = orderCaptor.getValue();
+    assertThat(savedOrder.totalAmount()).isEqualByComparingTo("70.00");
+    assertThat(savedOrder.notes()).contains("[ADICION] Ronda 2");
+
+    // Event published with added items and added SKU IDs only
+    ArgumentCaptor<OrderItemsAddedEvent> eventCaptor = ArgumentCaptor.forClass(OrderItemsAddedEvent.class);
+    verify(eventPublisher).publishEvent(eventCaptor.capture());
+    OrderItemsAddedEvent published = eventCaptor.getValue();
+    assertThat(published.orderId()).isEqualTo(orderId);
+    assertThat(published.tableName()).isEqualTo("Mesa 3");
+    assertThat(published.additionNotes()).isEqualTo("Ronda 2");
+    assertThat(published.addedSkuIds()).containsExactlyInAnyOrder(101L, 102L);
+  }
+
+  @Test
+  @DisplayName("Should throw IllegalStateException when trying to add items to an order that is not PENDING")
+  void shouldThrowWhenAddingItemsToNonPendingOrder() {
+    Long branchId = 1L;
+    Long orderId = 10L;
+
+    CustomerOrder paidOrder =
+        new CustomerOrder(
+            orderId,
+            branchId,
+            UUID.randomUUID(),
+            "key-paid",
+            null,
+            "DINE_IN",
+            null,
+            new BigDecimal("50.00"),
+            "PAID",
+            Set.of());
+
+    when(orderRepository.findByIdAndBranchId(orderId, branchId)).thenReturn(Optional.of(paidOrder));
+
+    AddOrderItemsRequest request =
+        new AddOrderItemsRequest(
+            Set.of(new AddOrderItemsRequest.OrderItemPayload(101L, 1, null)), null);
+
+    assertThatThrownBy(() -> orderService.addItemsToOrder(branchId, orderId, request))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("No se pueden agregar items a una orden con estado PAID");
+  }
 }

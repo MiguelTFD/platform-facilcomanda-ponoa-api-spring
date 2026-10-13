@@ -34,4 +34,11 @@ class KitchenOrderListener {
     String ticketNotes = notesBuilder.length() > 0 ? notesBuilder.toString() : null;
     kitchenTicketService.createTicketForOrder(event.branchId(), event.orderId(), ticketNotes);
   }
+
+  @Async
+  @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+  public void onOrderItemsAdded(com.facilcomanda.ponoa.sales.OrderItemsAddedEvent event) {
+    kitchenTicketService.appendAdditionToTicket(
+        event.branchId(), event.orderId(), event.tableName(), event.additionNotes());
+  }
 }

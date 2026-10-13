@@ -7,6 +7,8 @@ import com.facilcomanda.ponoa.table.RestaurantTableProvider;
 import com.facilcomanda.ponoa.table.RestaurantTableView;
 import com.facilcomanda.ponoa.table.TableState;
 import java.math.BigDecimal;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -157,6 +159,128 @@ class OrderService implements CustomerOrderProvider {
   @Transactional(readOnly = true)
   public List<CustomerOrder> getOrdersByBranch(Long branchId) {
     return orderRepository.findAllByBranchId(branchId);
+  }
+
+  @Transactional
+  public void addItemsToOrder(Long branchId, Long orderId, AddOrderItemsRequest request) {
+    CustomerOrder existingOrder =
+        orderRepository
+            .findByIdAndBranchId(orderId, branchId)
+            .orElseThrow(
+                () ->
+                    new ResourceNotFoundException(
+                        "Order " + orderId + " not found in branch " + branchId));
+
+    if (!"PENDING".equalsIgnoreCase(existingOrder.status())) {
+      throw new IllegalStateException(
+          "No se pueden agregar items a una orden con estado " + existingOrder.status());
+    }
+
+    Set<Long> addedSkuIds =
+        request.items().stream()
+            .map(AddOrderItemsRequest.OrderItemPayload::skuId)
+            .collect(Collectors.toSet());
+
+    Map<Long, BigDecimal> priceMap = catalogPriceProvider.getAvailablePrices(branchId, addedSkuIds);
+    for (Long skuId : addedSkuIds) {
+      if (!priceMap.containsKey(skuId)) {
+        throw new ResourceNotFoundException(
+            "Product SKU " + skuId + " is unavailable or inactive in branch " + branchId);
+      }
+    }
+
+    // Deduct stock atomically for added items
+    for (AddOrderItemsRequest.OrderItemPayload item : request.items()) {
+      stockService.deductStock(branchId, item.skuId(), item.quantity());
+    }
+
+    // Merge items into linked map
+    Map<Long, OrderItem> mergedItemsMap = new LinkedHashMap<>();
+    if (existingOrder.items() != null) {
+      for (OrderItem item : existingOrder.items()) {
+        mergedItemsMap.put(item.skuId(), item);
+      }
+    }
+
+    BigDecimal additionTotal = BigDecimal.ZERO;
+    Set<OrderItemsAddedEvent.AddedItemSummary> addedSummaries = new HashSet<>();
+
+    for (AddOrderItemsRequest.OrderItemPayload addedItem : request.items()) {
+      BigDecimal unitPrice = priceMap.get(addedItem.skuId());
+      BigDecimal lineTotal = unitPrice.multiply(BigDecimal.valueOf(addedItem.quantity()));
+      additionTotal = additionTotal.add(lineTotal);
+
+      addedSummaries.add(
+          new OrderItemsAddedEvent.AddedItemSummary(
+              addedItem.skuId(), addedItem.quantity(), addedItem.comments()));
+
+      if (mergedItemsMap.containsKey(addedItem.skuId())) {
+        OrderItem existing = mergedItemsMap.get(addedItem.skuId());
+        int updatedQty = existing.quantity() + addedItem.quantity();
+        String updatedComments =
+            (existing.comments() != null && !existing.comments().isBlank())
+                ? (addedItem.comments() != null && !addedItem.comments().isBlank())
+                    ? existing.comments() + " | [ADICION] " + addedItem.comments()
+                    : existing.comments()
+                : addedItem.comments();
+        mergedItemsMap.put(
+            addedItem.skuId(),
+            new OrderItem(addedItem.skuId(), updatedQty, unitPrice, updatedComments));
+      } else {
+        mergedItemsMap.put(
+            addedItem.skuId(),
+            new OrderItem(
+                addedItem.skuId(),
+                addedItem.quantity(),
+                unitPrice,
+                addedItem.comments()));
+      }
+    }
+
+    BigDecimal newTotalAmount = existingOrder.totalAmount().add(additionTotal);
+
+    String newNotes = existingOrder.notes();
+    if (request.additionNotes() != null && !request.additionNotes().isBlank()) {
+      newNotes =
+          (newNotes != null && !newNotes.isBlank())
+              ? newNotes + " | [ADICION] " + request.additionNotes()
+              : "[ADICION] " + request.additionNotes();
+    }
+
+    CustomerOrder updatedOrder =
+        new CustomerOrder(
+            existingOrder.id(),
+            existingOrder.branchId(),
+            existingOrder.appUserId(),
+            existingOrder.idempotencyKey(),
+            existingOrder.tableId(),
+            existingOrder.orderType(),
+            newNotes,
+            newTotalAmount,
+            existingOrder.status(),
+            new HashSet<>(mergedItemsMap.values()));
+
+    orderRepository.save(updatedOrder);
+
+    String resolvedTableName = null;
+    if (existingOrder.tableId() != null) {
+      resolvedTableName =
+          restaurantTableProvider
+              .findTableByIdAndBranch(existingOrder.tableId(), branchId)
+              .map(RestaurantTableView::tableName)
+              .orElse(null);
+    }
+
+    eventPublisher.publishEvent(
+        new OrderItemsAddedEvent(
+            branchId,
+            orderId,
+            existingOrder.tableId(),
+            resolvedTableName,
+            existingOrder.orderType(),
+            request.additionNotes(),
+            addedSummaries,
+            addedSkuIds));
   }
 
   @Override

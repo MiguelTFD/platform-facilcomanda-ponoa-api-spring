@@ -23,4 +23,13 @@ class TableOrderListener {
           event.branchId(), event.tableId(), TableState.OCCUPIED, event.orderId());
     }
   }
+
+  @Async
+  @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+  public void onOrderItemsAdded(com.facilcomanda.ponoa.sales.OrderItemsAddedEvent event) {
+    if (event.tableId() != null) {
+      tableEventPublisher.publishTableStateChanged(
+          event.branchId(), event.tableId(), TableState.OCCUPIED, event.orderId());
+    }
+  }
 }

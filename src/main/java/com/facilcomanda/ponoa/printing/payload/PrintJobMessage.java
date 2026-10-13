@@ -14,7 +14,37 @@ public record PrintJobMessage(
     String tableName,
     String orderType,
     String notes,
-    boolean isReprint) {
+    boolean isReprint,
+    boolean isAddition) {
+
+  public PrintJobMessage(
+      Long jobId,
+      Long branchId,
+      Long printerId,
+      Long orderId,
+      PrintDocumentType documentType,
+      String ipAddress,
+      Integer port,
+      String targetArea,
+      String tableName,
+      String orderType,
+      String notes,
+      boolean isReprint) {
+    this(
+        jobId,
+        branchId,
+        printerId,
+        orderId,
+        documentType,
+        ipAddress,
+        port,
+        targetArea,
+        tableName,
+        orderType,
+        notes,
+        isReprint,
+        false);
+  }
 
   public PrintJobMessage(
       Long jobId,
@@ -40,6 +70,7 @@ public record PrintJobMessage(
         tableName,
         orderType,
         notes,
+        false,
         false);
   }
 
@@ -64,6 +95,7 @@ public record PrintJobMessage(
         null,
         "DINE_IN",
         null,
+        false,
         false);
   }
 
@@ -87,6 +119,7 @@ public record PrintJobMessage(
         null,
         "DINE_IN",
         null,
+        false,
         false);
   }
 }

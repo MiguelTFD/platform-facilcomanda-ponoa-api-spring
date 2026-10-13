@@ -1,5 +1,6 @@
 package com.facilcomanda.ponoa.printing;
 
+import com.facilcomanda.ponoa.sales.OrderItemsAddedEvent;
 import com.facilcomanda.ponoa.sales.OrderPlacedEvent;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
@@ -25,5 +26,17 @@ class PrintOrderListener {
         event.tableName(),
         event.orderType(),
         event.notes());
+  }
+
+  @Async
+  @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+  public void onOrderItemsAdded(OrderItemsAddedEvent event) {
+    printJobService.enqueueKitchenPrintJobsForAddition(
+        event.branchId(),
+        event.orderId(),
+        event.addedSkuIds(),
+        event.tableName(),
+        event.orderType(),
+        event.additionNotes());
   }
 }

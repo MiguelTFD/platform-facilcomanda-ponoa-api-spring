@@ -52,6 +52,20 @@ class EscPosTicketFormatter {
       String orderType,
       String notes,
       boolean isReprint) {
+    return formatTicket(
+        branchId, orderId, documentType, targetArea, tableName, orderType, notes, isReprint, false);
+  }
+
+  public byte[] formatTicket(
+      Long branchId,
+      Long orderId,
+      PrintDocumentType documentType,
+      String targetArea,
+      String tableName,
+      String orderType,
+      String notes,
+      boolean isReprint,
+      boolean isAddition) {
     try (ByteArrayOutputStream out = new ByteArrayOutputStream()) {
       out.write(INIT);
       out.write(ALIGN_CENTER);
@@ -60,6 +74,14 @@ class EscPosTicketFormatter {
         out.write(BOLD_ON);
         out.write("================================\n".getBytes(StandardCharsets.US_ASCII));
         out.write("*** REIMPRESION / DUPLICADO ***\n".getBytes(StandardCharsets.US_ASCII));
+        out.write("================================\n".getBytes(StandardCharsets.US_ASCII));
+        out.write(BOLD_OFF);
+      }
+
+      if (isAddition) {
+        out.write(BOLD_ON);
+        out.write("================================\n".getBytes(StandardCharsets.US_ASCII));
+        out.write("        *** ADICION ***\n".getBytes(StandardCharsets.US_ASCII));
         out.write("================================\n".getBytes(StandardCharsets.US_ASCII));
         out.write(BOLD_OFF);
       }

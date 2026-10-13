@@ -35,7 +35,8 @@ class PrintJobListener {
               message.tableName(),
               message.orderType(),
               message.notes(),
-              message.isReprint());
+              message.isReprint(),
+              message.isAddition());
 
       printerClient.print(message.ipAddress(), message.port(), bytes);
 

@@ -91,4 +91,27 @@ class EscPosTicketFormatterTest {
     assertThat(text).contains("*** COCINA ***");
     assertThat(text).contains("Mesa: Mesa 4");
   }
+
+  @Test
+  @DisplayName("Should format ESC/POS ticket with addition banner when isAddition is true")
+  void shouldFormatTicketWithAdditionBanner() {
+    byte[] bytes =
+        formatter.formatTicket(
+            1L,
+            100L,
+            PrintDocumentType.KITCHEN_ORDER,
+            "COCINA",
+            "Mesa 4",
+            "DINE_IN",
+            "Ronda 2",
+            false,
+            true);
+
+    String text = new String(bytes, StandardCharsets.US_ASCII);
+    assertThat(text).contains("*** ADICION ***");
+    assertThat(text).contains("================================");
+    assertThat(text).contains("*** COCINA ***");
+    assertThat(text).contains("Mesa: Mesa 4");
+    assertThat(text).contains("Notas: Ronda 2");
+  }
 }

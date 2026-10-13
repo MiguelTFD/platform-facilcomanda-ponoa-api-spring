@@ -86,6 +86,45 @@ class KitchenTicketService {
                     "Kitchen ticket " + ticketId + " not found in branch " + branchId));
   }
 
+  @Transactional
+  public void appendAdditionToTicket(
+      Long branchId, Long orderId, String tableName, String additionNotes) {
+    kitchenTicketRepository
+        .findByOrderId(orderId)
+        .ifPresentOrElse(
+            ticket -> {
+              String updatedNotes = ticket.notes();
+              String additionTag =
+                  (additionNotes != null && !additionNotes.isBlank())
+                      ? "[ADICION]: " + additionNotes
+                      : "[ADICION DE PLATOS]";
+              updatedNotes =
+                  (updatedNotes != null && !updatedNotes.isBlank())
+                      ? updatedNotes + " | " + additionTag
+                      : additionTag;
+
+              kitchenTicketRepository.updateNotesAndStatus(
+                  ticket.id(), branchId, updatedNotes, KitchenTicketStatus.PENDING.name());
+
+              KitchenTicket updatedTicket =
+                  new KitchenTicket(
+                      ticket.id(),
+                      branchId,
+                      orderId,
+                      KitchenTicketStatus.PENDING,
+                      updatedNotes,
+                      ticket.createdAt(),
+                      null);
+
+              kitchenScreenPublisher.publishTicketUpdate(branchId, toResponse(updatedTicket));
+            },
+            () -> {
+              String notes =
+                  "Mesa: " + (tableName != null ? tableName : "N/A") + " | [ADICION]: " + additionNotes;
+              createTicketForOrder(branchId, orderId, notes);
+            });
+  }
+
   private KitchenTicketResponse toResponse(KitchenTicket ticket) {
     return new KitchenTicketResponse(
         ticket.id(),
