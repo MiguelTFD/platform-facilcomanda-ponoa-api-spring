@@ -8,4 +8,5 @@ public record RegisterPrinterRequest(
     @NotBlank String name,
     @NotBlank String ipAddress,
     @NotNull @Positive Integer port,
-    String connectionType) {}
+    String connectionType,
+    String terminalCode) {}

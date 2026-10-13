@@ -18,7 +18,7 @@ class PrintOrderListener {
   @Async
   @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
   public void onOrderPlaced(OrderPlacedEvent event) {
-    printJobService.enqueuePrintJobsForOrder(
-        event.branchId(), event.orderId(), PrintDocumentType.KITCHEN_ORDER);
+    printJobService.enqueueKitchenPrintJobsForOrder(
+        event.branchId(), event.orderId(), event.skuIds());
   }
 }

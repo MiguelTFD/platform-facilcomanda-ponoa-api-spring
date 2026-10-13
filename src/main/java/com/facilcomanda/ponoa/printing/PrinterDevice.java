@@ -13,6 +13,7 @@ public record PrinterDevice(
     @Column("ip_address") String ipAddress,
     Integer port,
     @Column("connection_type") String connectionType,
+    @Column("terminal_code") String terminalCode,
     @Column("is_active") Boolean isActive,
     @Column("created_at") OffsetDateTime createdAt,
     @Column("updated_at") OffsetDateTime updatedAt) {}

@@ -5,13 +5,17 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.facilcomanda.ponoa.catalog.CatalogPriceProvider;
 import com.facilcomanda.ponoa.printing.payload.PrintJobMessage;
 import com.facilcomanda.ponoa.printing.payload.RegisterPrinterRequest;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -29,19 +33,21 @@ class PrintJobServiceTest {
   @Mock private PrinterRouteRepository printerRouteRepository;
   @Mock private PrintJobRepository printJobRepository;
   @Mock private RabbitTemplate rabbitTemplate;
+  @Mock private CatalogPriceProvider catalogPriceProvider;
 
   @InjectMocks private PrintJobService printJobService;
 
   @Test
-  @DisplayName("Should register printer for branch successfully")
+  @DisplayName("Should register printer with terminalCode successfully")
   void shouldRegisterPrinter() {
     RegisterPrinterRequest request =
-        new RegisterPrinterRequest("Cocina 1", "192.168.1.100", 9100, "TCP");
+        new RegisterPrinterRequest("Caja 1", "192.168.1.100", 9100, "TCP", "CAJA-01");
 
-    when(printerDeviceRepository.existsByBranchIdAndName(1L, "Cocina 1")).thenReturn(false);
+    when(printerDeviceRepository.existsByBranchIdAndName(1L, "Caja 1")).thenReturn(false);
 
     PrinterDevice saved =
-        new PrinterDevice(10L, 1L, "Cocina 1", "192.168.1.100", 9100, "TCP", true, null, null);
+        new PrinterDevice(
+            10L, 1L, "Caja 1", "192.168.1.100", 9100, "TCP", "CAJA-01", true, null, null);
     when(printerDeviceRepository.save(any(PrinterDevice.class))).thenReturn(saved);
 
     Long id = printJobService.registerPrinter(1L, request);
@@ -54,7 +60,7 @@ class PrintJobServiceTest {
   @DisplayName("Should throw DuplicateKeyException when printer name already exists in branch")
   void shouldThrowWhenDuplicateNameInBranch() {
     RegisterPrinterRequest request =
-        new RegisterPrinterRequest("Cocina 1", "192.168.1.100", 9100, "TCP");
+        new RegisterPrinterRequest("Cocina 1", "192.168.1.100", 9100, "TCP", null);
 
     when(printerDeviceRepository.existsByBranchIdAndName(1L, "Cocina 1")).thenReturn(true);
 
@@ -66,20 +72,21 @@ class PrintJobServiceTest {
   @Test
   @DisplayName("MANDATORY INVARIANT TEST: Two branches with the SAME printer IP must stay strictly isolated")
   void mandatoryBranchIsolationTestWithSamePrinterIp() {
-    // Both Branch A (1L) and Branch B (2L) have private LAN printer at identical IP 192.168.1.100
     Long branchA = 1L;
     Long branchB = 2L;
     String sameIp = "192.168.1.100";
 
     PrinterDevice printerBranchA =
-        new PrinterDevice(101L, branchA, "Cocina Branch A", sameIp, 9100, "TCP", true, null, null);
+        new PrinterDevice(
+            101L, branchA, "Cocina Branch A", sameIp, 9100, "TCP", null, true, null, null);
     PrinterDevice printerBranchB =
-        new PrinterDevice(201L, branchB, "Cocina Branch B", sameIp, 9100, "TCP", true, null, null);
+        new PrinterDevice(
+            201L, branchB, "Cocina Branch B", sameIp, 9100, "TCP", null, true, null, null);
 
     PrinterRoute routeA =
-        new PrinterRoute(1L, branchA, 101L, PrintDocumentType.KITCHEN_ORDER, null);
+        new PrinterRoute(1L, branchA, 101L, PrintDocumentType.KITCHEN_ORDER, "COCINA", null);
 
-    when(printerRouteRepository.findAllByBranchIdAndDocumentType(branchA, PrintDocumentType.KITCHEN_ORDER))
+    when(printerRouteRepository.findMatchingRoutes(branchA, "KITCHEN_ORDER", "COCINA"))
         .thenReturn(List.of(routeA));
 
     when(printerDeviceRepository.findByIdAndBranchId(101L, branchA))
@@ -92,6 +99,7 @@ class PrintJobServiceTest {
             101L,
             1001L,
             PrintDocumentType.KITCHEN_ORDER,
+            "ORDER-1001-AREA-COCINA-PRINTER-101",
             PrintJobStatus.PENDING,
             null,
             0,
@@ -100,10 +108,8 @@ class PrintJobServiceTest {
 
     when(printJobRepository.save(any(PrintJob.class))).thenReturn(jobA);
 
-    // Trigger printing for Branch A
     printJobService.enqueuePrintJobsForOrder(branchA, 1001L, PrintDocumentType.KITCHEN_ORDER);
 
-    // Assert message sent to Branch A's queue only
     ArgumentCaptor<PrintJobMessage> messageCaptor = ArgumentCaptor.forClass(PrintJobMessage.class);
     verify(rabbitTemplate)
         .convertAndSend(
@@ -115,12 +121,155 @@ class PrintJobServiceTest {
     assertThat(sentMessage.branchId()).isEqualTo(branchA);
     assertThat(sentMessage.printerId()).isEqualTo(101L);
 
-    // Ensure Branch B's printer and routing key were NEVER touched
     verify(rabbitTemplate, never())
         .convertAndSend(
             eq(PrintingQueueConfig.PRINTING_EXCHANGE),
             eq("printing.branch.2"),
             any(PrintJobMessage.class));
     verify(printerDeviceRepository, never()).findByIdAndBranchId(201L, branchB);
+  }
+
+  @Test
+  @DisplayName("Multi-Station Kitchen Routing: partitions order between Grill and Kitchen stations cleanly")
+  void shouldPartitionKitchenOrderAcrossMultipleStations() {
+    Long branchId = 1L;
+    Long orderId = 888L;
+    Set<Long> skuIds = Set.of(10L, 20L);
+
+    when(catalogPriceProvider.getProductionAreasForSkus(skuIds))
+        .thenReturn(Map.of(10L, "COCINA", 20L, "PARRILLA"));
+
+    PrinterDevice kitchenPrinter =
+        new PrinterDevice(101L, branchId, "Ticketera Cocina", "192.168.1.50", 9100, "TCP", null, true, null, null);
+    PrinterDevice grillPrinter =
+        new PrinterDevice(102L, branchId, "Ticketera Parrilla", "192.168.1.51", 9100, "TCP", null, true, null, null);
+
+    PrinterRoute routeKitchen =
+        new PrinterRoute(1L, branchId, 101L, PrintDocumentType.KITCHEN_ORDER, "COCINA", null);
+    PrinterRoute routeGrill =
+        new PrinterRoute(2L, branchId, 102L, PrintDocumentType.KITCHEN_ORDER, "PARRILLA", null);
+
+    when(printerRouteRepository.findMatchingRoutes(branchId, "KITCHEN_ORDER", "COCINA"))
+        .thenReturn(List.of(routeKitchen));
+    when(printerRouteRepository.findMatchingRoutes(branchId, "KITCHEN_ORDER", "PARRILLA"))
+        .thenReturn(List.of(routeGrill));
+
+    when(printerDeviceRepository.findByIdAndBranchId(101L, branchId))
+        .thenReturn(Optional.of(kitchenPrinter));
+    when(printerDeviceRepository.findByIdAndBranchId(102L, branchId))
+        .thenReturn(Optional.of(grillPrinter));
+
+    when(printJobRepository.save(any(PrintJob.class)))
+        .thenAnswer(inv -> {
+          PrintJob arg = inv.getArgument(0);
+          return new PrintJob(
+              arg.printerId() + 1000L,
+              arg.branchId(),
+              arg.printerId(),
+              arg.orderId(),
+              arg.documentType(),
+              arg.idempotencyKey(),
+              arg.status(),
+              arg.errorMessage(),
+              arg.retryCount(),
+              null,
+              null);
+        });
+
+    printJobService.enqueueKitchenPrintJobsForOrder(branchId, orderId, skuIds);
+
+    ArgumentCaptor<PrintJobMessage> messageCaptor = ArgumentCaptor.forClass(PrintJobMessage.class);
+    verify(rabbitTemplate, times(2))
+        .convertAndSend(
+            eq(PrintingQueueConfig.PRINTING_EXCHANGE),
+            eq("printing.branch.1"),
+            messageCaptor.capture());
+
+    List<PrintJobMessage> sent = messageCaptor.getAllValues();
+    assertThat(sent).hasSize(2);
+    assertThat(sent)
+        .extracting(PrintJobMessage::targetArea)
+        .containsExactlyInAnyOrder("COCINA", "PARRILLA");
+    assertThat(sent)
+        .extracting(PrintJobMessage::printerId)
+        .containsExactlyInAnyOrder(101L, 102L);
+  }
+
+  @Test
+  @DisplayName("Targeted Cashier Printing: dispatches receipt strictly to terminal CAJA-01, never touching CAJA-02")
+  void shouldRouteCashierReceiptStrictlyToTargetTerminal() {
+    Long branchId = 1L;
+    Long orderId = 777L;
+
+    PrinterDevice caja1Printer =
+        new PrinterDevice(
+            201L, branchId, "Impresora Caja 1", "192.168.1.101", 9100, "TCP", "CAJA-01", true, null, null);
+
+    when(printerDeviceRepository.findByBranchIdAndTerminalCodeAndIsActiveTrue(branchId, "CAJA-01"))
+        .thenReturn(Optional.of(caja1Printer));
+
+    when(printJobRepository.existsByIdempotencyKey(
+        eq(branchId), eq(orderId), eq(201L), eq("CUSTOMER_RECEIPT"), any()))
+        .thenReturn(false);
+
+    PrintJob savedJob =
+        new PrintJob(
+            801L,
+            branchId,
+            201L,
+            orderId,
+            PrintDocumentType.CUSTOMER_RECEIPT,
+            "CASHIER-CAJA-01-ORDER-777",
+            PrintJobStatus.PENDING,
+            null,
+            0,
+            null,
+            null);
+    when(printJobRepository.save(any(PrintJob.class))).thenReturn(savedJob);
+
+    Long jobId = printJobService.enqueueCashierReceipt(branchId, orderId, "CAJA-01", null);
+
+    assertThat(jobId).isEqualTo(801L);
+
+    ArgumentCaptor<PrintJobMessage> messageCaptor = ArgumentCaptor.forClass(PrintJobMessage.class);
+    verify(rabbitTemplate)
+        .convertAndSend(
+            eq(PrintingQueueConfig.PRINTING_EXCHANGE),
+            eq("printing.branch.1"),
+            messageCaptor.capture());
+
+    PrintJobMessage msg = messageCaptor.getValue();
+    assertThat(msg.printerId()).isEqualTo(201L);
+    assertThat(msg.ipAddress()).isEqualTo("192.168.1.101");
+    assertThat(msg.targetArea()).isEqualTo("CAJA-01");
+
+    // CAJA-02 was never queried
+    verify(printerDeviceRepository, never())
+        .findByBranchIdAndTerminalCodeAndIsActiveTrue(branchId, "CAJA-02");
+  }
+
+  @Test
+  @DisplayName("Idempotency: duplicate cashier print request is ignored and does not double-enqueue")
+  void shouldPreventDuplicatePrintJobsViaIdempotencyKey() {
+    Long branchId = 1L;
+    Long orderId = 777L;
+
+    PrinterDevice caja1Printer =
+        new PrinterDevice(
+            201L, branchId, "Impresora Caja 1", "192.168.1.101", 9100, "TCP", "CAJA-01", true, null, null);
+
+    when(printerDeviceRepository.findByBranchIdAndTerminalCodeAndIsActiveTrue(branchId, "CAJA-01"))
+        .thenReturn(Optional.of(caja1Printer));
+
+    when(printJobRepository.existsByIdempotencyKey(
+        eq(branchId), eq(orderId), eq(201L), eq("CUSTOMER_RECEIPT"), any()))
+        .thenReturn(true);
+
+    Long result = printJobService.enqueueCashierReceipt(branchId, orderId, "CAJA-01", null);
+
+    assertThat(result).isNull();
+    verify(printJobRepository, never()).save(any(PrintJob.class));
+    verify(rabbitTemplate, never())
+        .convertAndSend(any(), any(), any(PrintJobMessage.class));
   }
 }

@@ -24,6 +24,11 @@ class EscPosTicketFormatter {
 
   public byte[] formatTicket(
       Long branchId, Long orderId, PrintDocumentType documentType) {
+    return formatTicket(branchId, orderId, documentType, null);
+  }
+
+  public byte[] formatTicket(
+      Long branchId, Long orderId, PrintDocumentType documentType, String targetArea) {
     try (ByteArrayOutputStream out = new ByteArrayOutputStream()) {
       out.write(INIT);
       out.write(ALIGN_CENTER);
@@ -31,9 +36,17 @@ class EscPosTicketFormatter {
       out.write(DOUBLE_SIZE);
 
       if (PrintDocumentType.KITCHEN_ORDER.equals(documentType)) {
-        out.write("*** COCINA ***\n".getBytes(StandardCharsets.US_ASCII));
+        String header =
+            (targetArea != null && !targetArea.isBlank())
+                ? "*** " + targetArea.toUpperCase() + " ***\n"
+                : "*** COCINA ***\n";
+        out.write(header.getBytes(StandardCharsets.US_ASCII));
       } else {
-        out.write("*** CUENTA ***\n".getBytes(StandardCharsets.US_ASCII));
+        String header =
+            (targetArea != null && !targetArea.isBlank())
+                ? "*** CUENTA (" + targetArea.toUpperCase() + ") ***\n"
+                : "*** CUENTA ***\n";
+        out.write(header.getBytes(StandardCharsets.US_ASCII));
       }
 
       out.write(NORMAL_SIZE);

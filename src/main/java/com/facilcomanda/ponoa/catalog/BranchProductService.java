@@ -64,4 +64,23 @@ class BranchProductService implements CatalogPriceProvider {
 
     return resolvedPrices;
   }
+
+  @Override
+  @Transactional(readOnly = true)
+  public Map<Long, String> getProductionAreasForSkus(Set<Long> skuIds) {
+    if (skuIds == null || skuIds.isEmpty()) {
+      return Map.of();
+    }
+
+    List<SkuProductionAreaView> views =
+        branchProductRepository.findProductionAreasBySkuIds(skuIds);
+
+    Map<Long, String> areaMap = new HashMap<>();
+    for (SkuProductionAreaView view : views) {
+      areaMap.put(
+          view.skuId(), view.productionArea() != null ? view.productionArea() : "COCINA");
+    }
+
+    return areaMap;
+  }
 }

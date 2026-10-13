@@ -12,6 +12,7 @@ public record PrintJob(
     @Column("printer_id") Long printerId,
     @Column("order_id") Long orderId,
     @Column("document_type") PrintDocumentType documentType,
+    @Column("idempotency_key") String idempotencyKey,
     PrintJobStatus status,
     @Column("error_message") String errorMessage,
     @Column("retry_count") Integer retryCount,

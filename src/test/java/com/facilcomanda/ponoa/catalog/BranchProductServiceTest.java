@@ -93,4 +93,20 @@ class BranchProductServiceTest {
     assertThat(prices).containsEntry(10L, new BigDecimal("25.00"));
     assertThat(prices).containsEntry(20L, new BigDecimal("30.00"));
   }
+
+  @Test
+  @DisplayName("Should return production areas configured for SKUs with default fallback")
+  void shouldReturnProductionAreasForSkus() {
+    when(branchProductRepository.findProductionAreasBySkuIds(Set.of(10L, 20L)))
+        .thenReturn(
+            List.of(
+                new SkuProductionAreaView(10L, "PARRILLA"),
+                new SkuProductionAreaView(20L, "BARRA")));
+
+    Map<Long, String> areas =
+        branchProductService.getProductionAreasForSkus(Set.of(10L, 20L));
+
+    assertThat(areas).containsEntry(10L, "PARRILLA");
+    assertThat(areas).containsEntry(20L, "BARRA");
+  }
 }

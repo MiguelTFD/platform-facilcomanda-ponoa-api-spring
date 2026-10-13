@@ -11,4 +11,10 @@ public interface CatalogPriceProvider {
    * If a SKU is marked as unavailable in the branch, it is omitted from the returned map.
    */
   Map<Long, BigDecimal> getAvailablePrices(Long branchId, Set<Long> skuIds);
+
+  /**
+   * Returns the production area (e.g. COCINA, PARRILLA, BARRA) configured for each SKU.
+   * Defaults to 'COCINA' if not explicitly configured.
+   */
+  Map<Long, String> getProductionAreasForSkus(Set<Long> skuIds);
 }

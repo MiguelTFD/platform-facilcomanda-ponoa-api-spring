@@ -42,6 +42,7 @@ class ProductService {
             request.brandId(),
             request.name(),
             request.baseDescription(),
+            request.productionArea() != null ? request.productionArea() : "COCINA",
             skus,
             Collections.emptySet(),
             categoryRefs);

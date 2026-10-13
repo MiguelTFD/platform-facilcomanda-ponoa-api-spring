@@ -7,4 +7,5 @@ public record PrinterDeviceResponse(
     String ipAddress,
     Integer port,
     String connectionType,
+    String terminalCode,
     Boolean isActive) {}

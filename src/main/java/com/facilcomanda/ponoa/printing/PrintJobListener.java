@@ -28,7 +28,10 @@ class PrintJobListener {
     try {
       byte[] bytes =
           ticketFormatter.formatTicket(
-              message.branchId(), message.orderId(), message.documentType());
+              message.branchId(),
+              message.orderId(),
+              message.documentType(),
+              message.targetArea());
 
       printerClient.print(message.ipAddress(), message.port(), bytes);
 

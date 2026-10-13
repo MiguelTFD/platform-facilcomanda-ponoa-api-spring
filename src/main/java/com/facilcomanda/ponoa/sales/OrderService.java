@@ -83,7 +83,8 @@ class OrderService {
     Long savedOrderId = orderRepository.save(newOrder).id();
 
     eventPublisher.publishEvent(
-        new OrderPlacedEvent(savedOrderId, branchId, userEmail, totalOrderAmount));
+        new OrderPlacedEvent(
+            savedOrderId, branchId, userEmail, totalOrderAmount, requestedSkuIds));
 
     return savedOrderId;
   }

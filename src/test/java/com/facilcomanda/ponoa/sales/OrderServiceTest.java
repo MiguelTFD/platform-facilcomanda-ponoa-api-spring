@@ -72,6 +72,7 @@ class OrderServiceTest {
     verify(eventPublisher).publishEvent(eventCaptor.capture());
     assertThat(eventCaptor.getValue().branchId()).isEqualTo(branchId);
     assertThat(eventCaptor.getValue().orderId()).isEqualTo(1L);
+    assertThat(eventCaptor.getValue().skuIds()).containsExactly(101L);
 
     verify(stockService).deductStock(branchId, 101L, 2);
   }

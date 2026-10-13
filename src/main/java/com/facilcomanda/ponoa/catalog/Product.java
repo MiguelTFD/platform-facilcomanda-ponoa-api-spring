@@ -12,6 +12,7 @@ public record Product(
     @Column("brand_id") Long brandId,
     String name,
     String baseDescription,
+    @Column("production_area") String productionArea,
     @MappedCollection(idColumn = "product_id") Set<SkuPresentation> skus,
     @MappedCollection(idColumn = "product_id") Set<ProductPicture> pictures,
     @MappedCollection(idColumn = "product_id") Set<ProductCategoryRef> categoryRefs) {}

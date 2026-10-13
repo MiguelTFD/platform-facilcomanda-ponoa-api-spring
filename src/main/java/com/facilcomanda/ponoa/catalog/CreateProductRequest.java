@@ -10,6 +10,7 @@ public record CreateProductRequest(
     @NotNull Long brandId,
     @NotBlank String name,
     String baseDescription,
+    String productionArea,
     Set<Long> categoryIds,
     Set<SkuPayload> skus) {
   public record SkuPayload(

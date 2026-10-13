@@ -22,4 +22,16 @@ interface PrintJobRepository extends CrudRepository<PrintJob, Long> {
       @Param("branchId") Long branchId,
       @Param("status") String status,
       @Param("errorMessage") String errorMessage);
+
+  @Query(
+      "SELECT COUNT(*) > 0 FROM print_jobs "
+          + "WHERE branch_id = :branchId AND order_id = :orderId "
+          + "  AND printer_id = :printerId AND document_type = :documentType "
+          + "  AND idempotency_key = :idempotencyKey")
+  boolean existsByIdempotencyKey(
+      @Param("branchId") Long branchId,
+      @Param("orderId") Long orderId,
+      @Param("printerId") Long printerId,
+      @Param("documentType") String documentType,
+      @Param("idempotencyKey") String idempotencyKey);
 }

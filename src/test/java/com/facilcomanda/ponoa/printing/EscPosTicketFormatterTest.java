@@ -32,4 +32,22 @@ class EscPosTicketFormatterTest {
     assertThat(bytes[len - 2]).isEqualTo((byte) 0x42);
     assertThat(bytes[len - 1]).isEqualTo((byte) 0x03);
   }
+
+  @Test
+  @DisplayName("Should format ESC/POS ticket with custom production station header")
+  void shouldFormatGrillOrder() {
+    byte[] bytes = formatter.formatTicket(1L, 100L, PrintDocumentType.KITCHEN_ORDER, "PARRILLA");
+
+    String text = new String(bytes, StandardCharsets.US_ASCII);
+    assertThat(text).contains("*** PARRILLA ***");
+  }
+
+  @Test
+  @DisplayName("Should format ESC/POS ticket with cashier terminal header")
+  void shouldFormatCashierBill() {
+    byte[] bytes = formatter.formatTicket(1L, 100L, PrintDocumentType.CUSTOMER_RECEIPT, "CAJA-01");
+
+    String text = new String(bytes, StandardCharsets.US_ASCII);
+    assertThat(text).contains("*** CUENTA (CAJA-01) ***");
+  }
 }

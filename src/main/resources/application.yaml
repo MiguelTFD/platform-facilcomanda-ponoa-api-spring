@@ -5,6 +5,11 @@ spring:
   application:
     name: platform-facilcomanda-ponoa-api-spring
 
+  rabbitmq:
+    listener:
+      simple:
+        prefetch: 1
+
   datasource:
     url: jdbc:postgresql://localhost:5432/${FCP_DB_NAME}
     username: ${FCP_DB_USER}

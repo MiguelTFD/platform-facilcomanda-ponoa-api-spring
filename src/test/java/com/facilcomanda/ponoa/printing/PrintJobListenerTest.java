@@ -32,7 +32,7 @@ class PrintJobListenerTest {
             1L, 10L, 100L, 500L, PrintDocumentType.KITCHEN_ORDER, "192.168.1.50", 9100);
 
     byte[] bytes = new byte[] {0x1B, 0x40};
-    when(ticketFormatter.formatTicket(10L, 500L, PrintDocumentType.KITCHEN_ORDER))
+    when(ticketFormatter.formatTicket(10L, 500L, PrintDocumentType.KITCHEN_ORDER, null))
         .thenReturn(bytes);
 
     listener.handlePrintJob(message);
@@ -45,6 +45,23 @@ class PrintJobListenerTest {
   }
 
   @Test
+  @DisplayName("Should pass targetArea to ticketFormatter when present")
+  void shouldPassTargetAreaToFormatter() {
+    PrintJobMessage message =
+        new PrintJobMessage(
+            2L, 10L, 101L, 500L, PrintDocumentType.KITCHEN_ORDER, "192.168.1.51", 9100, "PARRILLA");
+
+    byte[] bytes = new byte[] {0x1B, 0x40};
+    when(ticketFormatter.formatTicket(10L, 500L, PrintDocumentType.KITCHEN_ORDER, "PARRILLA"))
+        .thenReturn(bytes);
+
+    listener.handlePrintJob(message);
+
+    verify(ticketFormatter).formatTicket(10L, 500L, PrintDocumentType.KITCHEN_ORDER, "PARRILLA");
+    verify(printerClient).print("192.168.1.51", 9100, bytes);
+  }
+
+  @Test
   @DisplayName("Should mark job as FAILED and rethrow exception when printer connection fails")
   void shouldMarkJobFailedOnException() {
     PrintJobMessage message =
@@ -52,7 +69,7 @@ class PrintJobListenerTest {
             1L, 10L, 100L, 500L, PrintDocumentType.KITCHEN_ORDER, "192.168.1.50", 9100);
 
     byte[] bytes = new byte[] {0x1B, 0x40};
-    when(ticketFormatter.formatTicket(10L, 500L, PrintDocumentType.KITCHEN_ORDER))
+    when(ticketFormatter.formatTicket(10L, 500L, PrintDocumentType.KITCHEN_ORDER, null))
         .thenReturn(bytes);
 
     doThrow(new PrinterCommunicationException("Connection refused", null))

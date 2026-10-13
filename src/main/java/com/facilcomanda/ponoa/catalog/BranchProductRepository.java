@@ -22,6 +22,14 @@ interface BranchProductRepository extends CrudRepository<BranchProduct, Long> {
   @Query("SELECT id as sku_id, current_price FROM sku_presentations WHERE id IN (:skuIds)")
   List<SkuBasePriceView> findBasePricesBySkuIds(@Param("skuIds") Collection<Long> skuIds);
 
+  @Query(
+      "SELECT sp.id as sku_id, COALESCE(p.production_area, 'COCINA') as production_area "
+          + "FROM sku_presentations sp "
+          + "JOIN products p ON sp.product_id = p.id "
+          + "WHERE sp.id IN (:skuIds)")
+  List<SkuProductionAreaView> findProductionAreasBySkuIds(
+      @Param("skuIds") Collection<Long> skuIds);
+
   @Modifying
   @Query(
       "INSERT INTO branch_products (branch_id, sku_id, price, is_available) "
@@ -36,3 +44,5 @@ interface BranchProductRepository extends CrudRepository<BranchProduct, Long> {
 }
 
 record SkuBasePriceView(Long skuId, BigDecimal currentPrice) {}
+
+record SkuProductionAreaView(Long skuId, String productionArea) {}

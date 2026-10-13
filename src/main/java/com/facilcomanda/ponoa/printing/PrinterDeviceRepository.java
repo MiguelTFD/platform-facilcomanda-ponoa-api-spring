@@ -12,5 +12,8 @@ interface PrinterDeviceRepository extends CrudRepository<PrinterDevice, Long> {
 
   List<PrinterDevice> findAllByBranchIdAndIsActiveTrue(Long branchId);
 
+  Optional<PrinterDevice> findByBranchIdAndTerminalCodeAndIsActiveTrue(
+      Long branchId, String terminalCode);
+
   boolean existsByBranchIdAndName(Long branchId, String name);
 }

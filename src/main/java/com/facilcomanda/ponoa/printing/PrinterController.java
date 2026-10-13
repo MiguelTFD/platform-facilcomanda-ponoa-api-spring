@@ -2,6 +2,7 @@ package com.facilcomanda.ponoa.printing;
 
 import com.facilcomanda.ponoa.global.security.BranchAccessValidator;
 import com.facilcomanda.ponoa.printing.payload.ConfigureRouteRequest;
+import com.facilcomanda.ponoa.printing.payload.PrintCashierReceiptRequest;
 import com.facilcomanda.ponoa.printing.payload.PrintJobResponse;
 import com.facilcomanda.ponoa.printing.payload.PrinterDeviceResponse;
 import com.facilcomanda.ponoa.printing.payload.RegisterPrinterRequest;
@@ -69,6 +70,7 @@ class PrinterController {
                         p.ipAddress(),
                         p.port(),
                         p.connectionType(),
+                        p.terminalCode(),
                         p.isActive()))
             .toList();
 
@@ -83,9 +85,22 @@ class PrinterController {
       @Valid @RequestBody ConfigureRouteRequest request) {
 
     Long branchId = branchAccessValidator.resolveAndValidateBranchId(jwt, branchIdHeader);
-    printJobService.configureRoute(branchId, id, request.documentType());
+    printJobService.configureRoute(branchId, id, request.documentType(), request.productionArea());
 
     return ResponseEntity.ok().build();
+  }
+
+  @PostMapping("/receipts")
+  public ResponseEntity<Void> printCashierReceipt(
+      @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
+      @AuthenticationPrincipal Jwt jwt,
+      @Valid @RequestBody PrintCashierReceiptRequest request) {
+
+    Long branchId = branchAccessValidator.resolveAndValidateBranchId(jwt, branchIdHeader);
+    printJobService.enqueueCashierReceipt(
+        branchId, request.orderId(), request.terminalCode(), request.idempotencyKey());
+
+    return ResponseEntity.accepted().build();
   }
 
   @GetMapping("/jobs")

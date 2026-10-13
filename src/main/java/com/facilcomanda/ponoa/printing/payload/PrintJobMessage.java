@@ -9,4 +9,17 @@ public record PrintJobMessage(
     Long orderId,
     PrintDocumentType documentType,
     String ipAddress,
-    Integer port) {}
+    Integer port,
+    String targetArea) {
+
+  public PrintJobMessage(
+      Long jobId,
+      Long branchId,
+      Long printerId,
+      Long orderId,
+      PrintDocumentType documentType,
+      String ipAddress,
+      Integer port) {
+    this(jobId, branchId, printerId, orderId, documentType, ipAddress, port, null);
+  }
+}
