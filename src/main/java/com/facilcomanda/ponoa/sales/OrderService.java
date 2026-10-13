@@ -1,5 +1,6 @@
 package com.facilcomanda.ponoa.sales;
 
+import com.facilcomanda.ponoa.catalog.CatalogPriceProvider;
 import com.facilcomanda.ponoa.global.exception.ResourceNotFoundException;
 import com.facilcomanda.ponoa.inventory.StockService;
 import java.math.BigDecimal;
@@ -16,17 +17,17 @@ import org.springframework.transaction.annotation.Transactional;
 class OrderService {
 
   private final OrderRepository orderRepository;
-  private final SkuPricingRepository skuPricingRepository;
+  private final CatalogPriceProvider catalogPriceProvider;
   private final StockService stockService;
   private final ApplicationEventPublisher eventPublisher;
 
   OrderService(
       OrderRepository orderRepository,
-      SkuPricingRepository skuPricingRepository,
+      CatalogPriceProvider catalogPriceProvider,
       StockService stockService,
       ApplicationEventPublisher eventPublisher) {
     this.orderRepository = orderRepository;
-    this.skuPricingRepository = skuPricingRepository;
+    this.catalogPriceProvider = catalogPriceProvider;
     this.stockService = stockService;
     this.eventPublisher = eventPublisher;
   }
@@ -45,8 +46,7 @@ class OrderService {
             .collect(Collectors.toSet());
 
     Map<Long, BigDecimal> officialPrices =
-        skuPricingRepository.findPricesBySkuIds(requestedSkuIds).stream()
-            .collect(Collectors.toMap(SkuPriceView::skuId, SkuPriceView::currentPrice));
+        catalogPriceProvider.getAvailablePrices(branchId, requestedSkuIds);
 
     BigDecimal totalOrderAmount = BigDecimal.ZERO;
 
@@ -58,7 +58,10 @@ class OrderService {
 
                   if (unitPrice == null) {
                     throw new ResourceNotFoundException(
-                        "El SKU " + payload.skuId() + " is unavailable or does not exist.");
+                        "El SKU "
+                            + payload.skuId()
+                            + " is unavailable or does not exist in branch "
+                            + branchId);
                   }
 
                   stockService.deductStock(branchId, payload.skuId(), payload.quantity());

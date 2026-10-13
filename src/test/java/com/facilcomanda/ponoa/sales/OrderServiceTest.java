@@ -6,10 +6,11 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.facilcomanda.ponoa.catalog.CatalogPriceProvider;
 import com.facilcomanda.ponoa.global.exception.ResourceNotFoundException;
 import com.facilcomanda.ponoa.inventory.StockService;
 import java.math.BigDecimal;
-import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -26,7 +27,7 @@ import org.springframework.context.ApplicationEventPublisher;
 class OrderServiceTest {
 
   @Mock private OrderRepository orderRepository;
-  @Mock private SkuPricingRepository skuPricingRepository;
+  @Mock private CatalogPriceProvider catalogPriceProvider;
   @Mock private StockService stockService;
   @Mock private ApplicationEventPublisher eventPublisher;
 
@@ -43,8 +44,8 @@ class OrderServiceTest {
     PlaceOrderRequest request =
         new PlaceOrderRequest(Set.of(new PlaceOrderRequest.OrderItemPayload(101L, 2)));
 
-    when(skuPricingRepository.findPricesBySkuIds(Set.of(101L)))
-        .thenReturn(List.of(new SkuPriceView(101L, new BigDecimal("25.50"))));
+    when(catalogPriceProvider.getAvailablePrices(branchId, Set.of(101L)))
+        .thenReturn(Map.of(101L, new BigDecimal("25.50")));
 
     CustomerOrder savedOrder =
         new CustomerOrder(
@@ -71,6 +72,8 @@ class OrderServiceTest {
     verify(eventPublisher).publishEvent(eventCaptor.capture());
     assertThat(eventCaptor.getValue().branchId()).isEqualTo(branchId);
     assertThat(eventCaptor.getValue().orderId()).isEqualTo(1L);
+
+    verify(stockService).deductStock(branchId, 101L, 2);
   }
 
   @Test
