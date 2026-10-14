@@ -38,7 +38,8 @@ public class SecurityConfig {
                         "/ws/**",
                         "/actuator/health/**",
                         "/actuator/info",
-                        "/actuator/prometheus")
+                        "/actuator/prometheus",
+                        "/api/v1/auth/**")
                     .permitAll()
                     .anyRequest()
                     .authenticated())

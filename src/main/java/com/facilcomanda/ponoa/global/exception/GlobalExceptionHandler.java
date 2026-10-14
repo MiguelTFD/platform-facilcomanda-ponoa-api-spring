@@ -29,6 +29,16 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
   private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
+  @ExceptionHandler(org.springframework.security.core.AuthenticationException.class)
+  public ProblemDetail handleAuthentication(org.springframework.security.core.AuthenticationException ex) {
+    ProblemDetail problemDetail =
+        ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, ex.getMessage());
+    problemDetail.setTitle("Autenticacion Fallida");
+    problemDetail.setType(URI.create("https://api.facilcomanda.com/errors/unauthorized"));
+    problemDetail.setProperty("timestamp", Instant.now());
+    return problemDetail;
+  }
+
   @ExceptionHandler(AccessDeniedException.class)
   public ProblemDetail handleAccessDenied(AccessDeniedException ex) {
     ProblemDetail problemDetail =
