@@ -65,6 +65,33 @@ public class CashController {
     return ResponseEntity.ok(cashService.listCashRegisters(branchId));
   }
 
+  @org.springframework.web.bind.annotation.PutMapping("/registers/{id}")
+  @PreAuthorize("hasAnyRole('ADMINISTRADOR', 'EMPRESA')")
+  public ResponseEntity<Void> updateCashRegister(
+      @PathVariable Long id,
+      @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
+      @AuthenticationPrincipal Jwt jwt,
+      @Valid @RequestBody com.facilcomanda.ponoa.cash.payload.UpdateCashRegisterRequest request) {
+
+    Long branchId = branchAccessValidator.resolveAndValidateBranchId(jwt, branchIdHeader);
+    cashService.updateCashRegister(branchId, id, request);
+
+    return ResponseEntity.noContent().build();
+  }
+
+  @org.springframework.web.bind.annotation.DeleteMapping("/registers/{id}")
+  @PreAuthorize("hasAnyRole('ADMINISTRADOR', 'EMPRESA')")
+  public ResponseEntity<Void> deleteCashRegister(
+      @PathVariable Long id,
+      @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
+      @AuthenticationPrincipal Jwt jwt) {
+
+    Long branchId = branchAccessValidator.resolveAndValidateBranchId(jwt, branchIdHeader);
+    cashService.deleteCashRegister(branchId, id);
+
+    return ResponseEntity.noContent().build();
+  }
+
   @PostMapping("/shifts/open")
   @PreAuthorize("hasAnyRole('CAJERO', 'ADMINISTRADOR', 'EMPRESA')")
   public ResponseEntity<Void> openCashShift(

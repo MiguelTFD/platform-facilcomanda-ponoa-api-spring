@@ -81,6 +81,65 @@ public class CashService implements CashShiftProvider {
   }
 
   @Transactional
+  public void updateCashRegister(
+      Long branchId, Long registerId, com.facilcomanda.ponoa.cash.payload.UpdateCashRegisterRequest request) {
+    CashRegister register =
+        registerRepository
+            .findByIdAndBranchId(registerId, branchId)
+            .orElseThrow(
+                () ->
+                    new ResourceNotFoundException(
+                        "Cash register " + registerId + " not found in branch " + branchId));
+
+    if (!register.name().equalsIgnoreCase(request.name().trim())
+        && registerRepository.existsByBranchIdAndName(branchId, request.name().trim())) {
+      throw new DuplicateKeyException(
+          "Cash register with name '" + request.name() + "' already exists in branch " + branchId);
+    }
+
+    CashRegister updated =
+        new CashRegister(
+            register.id(),
+            register.branchId(),
+            request.name().trim(),
+            request.description() != null ? request.description().trim() : null,
+            request.isActive() != null ? request.isActive() : register.isActive(),
+            register.createdAt(),
+            OffsetDateTime.now());
+
+    registerRepository.save(updated);
+  }
+
+  @Transactional
+  public void deleteCashRegister(Long branchId, Long registerId) {
+    CashRegister register =
+        registerRepository
+            .findByIdAndBranchId(registerId, branchId)
+            .orElseThrow(
+                () ->
+                    new ResourceNotFoundException(
+                        "Cash register " + registerId + " not found in branch " + branchId));
+
+    Optional<CashShift> openShift =
+        shiftRepository.findByCashRegisterIdAndStatus(registerId, CashShiftStatus.OPEN.name());
+    if (openShift.isPresent()) {
+      throw new IllegalStateException("Cannot deactivate cash register while it has an open shift.");
+    }
+
+    CashRegister updated =
+        new CashRegister(
+            register.id(),
+            register.branchId(),
+            register.name(),
+            register.description(),
+            false,
+            register.createdAt(),
+            OffsetDateTime.now());
+
+    registerRepository.save(updated);
+  }
+
+  @Transactional
   public Long openCashShift(
       Long branchId,
       UUID cashierUserId,

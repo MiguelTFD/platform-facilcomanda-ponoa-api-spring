@@ -88,6 +88,9 @@ logging:
     org.springframework.security: INFO
 
 app:
+  auth:
+    client-id: ${KEYCLOAK_CLIENT_ID:fcp-api}
+    client-secret: ${KEYCLOAK_CLIENT_SECRET:}
   security:
     cors:
       allowed-origins: ${CORS_ALLOWED_ORIGINS:*}

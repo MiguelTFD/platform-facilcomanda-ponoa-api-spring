@@ -81,6 +81,33 @@ class PrinterController {
     return ResponseEntity.ok(printers);
   }
 
+  @org.springframework.web.bind.annotation.PutMapping("/{id}")
+  @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('ADMINISTRADOR', 'EMPRESA')")
+  public ResponseEntity<Void> updatePrinter(
+      @PathVariable Long id,
+      @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
+      @AuthenticationPrincipal Jwt jwt,
+      @Valid @RequestBody com.facilcomanda.ponoa.printing.payload.UpdatePrinterRequest request) {
+
+    Long branchId = branchAccessValidator.resolveAndValidateBranchId(jwt, branchIdHeader);
+    printJobService.updatePrinter(branchId, id, request);
+
+    return ResponseEntity.noContent().build();
+  }
+
+  @org.springframework.web.bind.annotation.DeleteMapping("/{id}")
+  @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('ADMINISTRADOR', 'EMPRESA')")
+  public ResponseEntity<Void> deletePrinter(
+      @PathVariable Long id,
+      @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
+      @AuthenticationPrincipal Jwt jwt) {
+
+    Long branchId = branchAccessValidator.resolveAndValidateBranchId(jwt, branchIdHeader);
+    printJobService.deletePrinter(branchId, id);
+
+    return ResponseEntity.noContent().build();
+  }
+
   @PostMapping("/{id}/routes")
   @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('ADMINISTRADOR', 'EMPRESA')")
   public ResponseEntity<Void> configureRoute(

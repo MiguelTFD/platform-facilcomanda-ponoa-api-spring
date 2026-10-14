@@ -69,6 +69,65 @@ class PrintJobService {
   }
 
   @Transactional
+  public void updatePrinter(
+      Long branchId, Long printerId, com.facilcomanda.ponoa.printing.payload.UpdatePrinterRequest request) {
+    PrinterDevice device =
+        printerDeviceRepository
+            .findByIdAndBranchId(printerId, branchId)
+            .orElseThrow(
+                () ->
+                    new ResourceNotFoundException(
+                        "Printer " + printerId + " not found in branch " + branchId));
+
+    if (!device.name().equalsIgnoreCase(request.name().trim())
+        && printerDeviceRepository.existsByBranchIdAndName(branchId, request.name().trim())) {
+      throw new DuplicateKeyException(
+          "Printer with name " + request.name() + " already exists in branch " + branchId);
+    }
+
+    PrinterDevice updated =
+        new PrinterDevice(
+            device.id(),
+            device.branchId(),
+            request.name().trim(),
+            request.ipAddress().trim(),
+            request.port() != null ? request.port() : device.port(),
+            request.connectionType() != null ? request.connectionType().trim() : device.connectionType(),
+            request.terminalCode() != null ? request.terminalCode().trim() : device.terminalCode(),
+            request.isActive() != null ? request.isActive() : device.isActive(),
+            device.createdAt(),
+            OffsetDateTime.now());
+
+    printerDeviceRepository.save(updated);
+  }
+
+  @Transactional
+  public void deletePrinter(Long branchId, Long printerId) {
+    PrinterDevice device =
+        printerDeviceRepository
+            .findByIdAndBranchId(printerId, branchId)
+            .orElseThrow(
+                () ->
+                    new ResourceNotFoundException(
+                        "Printer " + printerId + " not found in branch " + branchId));
+
+    PrinterDevice updated =
+        new PrinterDevice(
+            device.id(),
+            device.branchId(),
+            device.name(),
+            device.ipAddress(),
+            device.port(),
+            device.connectionType(),
+            device.terminalCode(),
+            false,
+            device.createdAt(),
+            OffsetDateTime.now());
+
+    printerDeviceRepository.save(updated);
+  }
+
+  @Transactional
   public void configureRoute(
       Long branchId, Long printerId, PrintDocumentType documentType, String productionArea) {
     printerDeviceRepository

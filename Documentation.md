@@ -897,7 +897,62 @@ Base URL: `/api/v1/customers` e `/api/v1/invoices`
 
 Base URL: `/api/v1/cash`
 
-### 11.1. Abrir Turno de Caja
+### 11.1. Crear Caja Registradora
+* **Método:** `POST`
+* **Ruta:** `/api/v1/cash/registers`
+* **Roles:** `ADMINISTRADOR`, `EMPRESA`
+* **Headers:** `X-Branch-Id: 1`
+* **Body:**
+```json
+{
+  "name": "Caja Principal - Salón 1",
+  "description": "Terminal punto de venta con gaveta eléctrica"
+}
+```
+* **Respuesta (`201 Created`):** Header `Location: /api/v1/cash/registers/{id}`.
+
+### 11.2. Listar Cajas Registradoras de la Sucursal
+* **Método:** `GET`
+* **Ruta:** `/api/v1/cash/registers`
+* **Headers:** `X-Branch-Id: 1`
+* **Respuesta (`200 OK`):**
+```json
+[
+  {
+    "id": 1,
+    "branchId": 1,
+    "name": "Caja Principal - Salón 1",
+    "description": "Terminal punto de venta con gaveta eléctrica",
+    "isActive": true,
+    "createdAt": "2026-10-14T10:00:00Z"
+  }
+]
+```
+
+### 11.3. Actualizar Caja Registradora
+* **Método:** `PUT`
+* **Ruta:** `/api/v1/cash/registers/{id}`
+* **Roles:** `ADMINISTRADOR`, `EMPRESA`
+* **Headers:** `X-Branch-Id: 1`
+* **Body:**
+```json
+{
+  "name": "Caja Principal - Barra",
+  "description": "Reubicada a la barra principal",
+  "isActive": true
+}
+```
+* **Respuesta (`204 No Content`)**
+
+### 11.4. Desactivar / Eliminar Caja Registradora
+* **Método:** `DELETE`
+* **Ruta:** `/api/v1/cash/registers/{id}`
+* **Roles:** `ADMINISTRADOR`, `EMPRESA`
+* **Headers:** `X-Branch-Id: 1`
+* **Regla:** Desactivación lógica (soft-delete). No permite desactivar si la caja tiene un turno abierto activo.
+* **Respuesta (`204 No Content`)**
+
+### 11.5. Abrir Turno de Caja
 * **Método:** `POST`
 * **Ruta:** `/api/v1/cash/shifts/open`
 * **Roles:** `CAJERO`, `ADMINISTRADOR`, `EMPRESA`
@@ -912,14 +967,41 @@ Base URL: `/api/v1/cash`
 ```
 * **Respuesta (`201 Created`):** Header `Location: /api/v1/cash/shifts/{shiftId}`.
 
-### 11.2. Consultar Turno Actual del Cajero
+### 11.6. Registrar Movimiento Manual de Efectivo (Ingreso / Egreso)
+* **Método:** `POST`
+* **Ruta:** `/api/v1/cash/shifts/{shiftId}/movements`
+* **Roles:** `CAJERO`, `ADMINISTRADOR`, `EMPRESA`
+* **Headers:** `X-Branch-Id: 1`
+* **Body:**
+```json
+{
+  "type": "PAYMENT_OUT",
+  "amount": 30.00,
+  "reason": "Pago a proveedor de hielo"
+}
+```
+* **Respuesta (`201 Created`):** Header `Location: /api/v1/cash/shifts/{shiftId}/movements/{id}`.
+
+### 11.7. Consultar Turno Actual del Cajero
 * **Método:** `GET`
 * **Ruta:** `/api/v1/cash/shifts/current`
 * **Roles:** `CAJERO`, `ADMINISTRADOR`, `EMPRESA`
 * **Headers:** `X-Branch-Id: 1`
-* **Respuesta (`200 OK`)**
+* **Respuesta (`200 OK`):** Objeto `CashShiftResponse`.
 
-### 11.3. Cerrar Turno de Caja (Arqueo Final)
+### 11.8. Consultar Turno por ID
+* **Método:** `GET`
+* **Ruta:** `/api/v1/cash/shifts/{shiftId}`
+* **Headers:** `X-Branch-Id: 1`
+* **Respuesta (`200 OK`):** Objeto `CashShiftResponse`.
+
+### 11.9. Listar Todos los Turnos de la Sucursal
+* **Método:** `GET`
+* **Ruta:** `/api/v1/cash/shifts`
+* **Headers:** `X-Branch-Id: 1`
+* **Respuesta (`200 OK`):** Array de `CashShiftResponse`.
+
+### 11.10. Cerrar Turno de Caja (Arqueo Final)
 * **Método:** `POST`
 * **Ruta:** `/api/v1/cash/shifts/{shiftId}/close`
 * **Roles:** `CAJERO`, `ADMINISTRADOR`, `EMPRESA`
@@ -927,7 +1009,7 @@ Base URL: `/api/v1/cash`
 * **Body:** `{ "countedCash": 575.00, "notes": "Cierre conforme" }`
 * **Respuesta (`200 OK`):** Retorna `CashShiftResponse` con cálculo de cuadre.
 
-### 11.4. Reporte Fiscal y Operativo de Corte Z
+### 11.11. Reporte Fiscal y Operativo de Corte Z
 * **Método:** `GET`
 * **Ruta:** `/api/v1/cash/shifts/{shiftId}/z-cut`
 * **Roles:** `CAJERO`, `ADMINISTRADOR`, `EMPRESA`
@@ -1083,25 +1165,107 @@ Base URL: `/api/v1/printers`
 * **Método:** `GET`
 * **Ruta:** `/api/v1/printers`
 * **Headers:** `X-Branch-Id: 1`
-* **Respuesta (`200 OK`)**
+* **Respuesta (`200 OK`):**
+```json
+[
+  {
+    "id": 1,
+    "branchId": 1,
+    "name": "Impresora Cocina Caliente",
+    "ipAddress": "192.168.1.200",
+    "port": 9100,
+    "connectionType": "RAW_TCP",
+    "terminalCode": "PRN-KITCHEN-01",
+    "isActive": true
+  }
+]
+```
 
-### 14.3. Configurar Ruta de Producción
-Vincula un área de producción (`COCINA`, `BARRA`, `HORNO`, `CAJA`) con la impresora física encargada de recibir las comandas.
-* **Método:** `POST`
-* **Ruta:** `/api/v1/printers/routes`
+### 14.3. Actualizar Dispositivo de Impresión
+* **Método:** `PUT`
+* **Ruta:** `/api/v1/printers/{id}`
 * **Roles:** `ADMINISTRADOR`, `EMPRESA`
 * **Headers:** `X-Branch-Id: 1`
-* **Body:** `{ "printerDeviceId": 1, "productionArea": "COCINA" }`
+* **Body:**
+```json
+{
+  "name": "Impresora Cocina Caliente (Epson TM-T20III)",
+  "ipAddress": "192.168.1.205",
+  "port": 9100,
+  "connectionType": "RAW_TCP",
+  "terminalCode": "PRN-KITCHEN-01",
+  "isActive": true
+}
+```
+* **Respuesta (`204 No Content`)**
+
+### 14.4. Desactivar / Eliminar Impresora
+* **Método:** `DELETE`
+* **Ruta:** `/api/v1/printers/{id}`
+* **Roles:** `ADMINISTRADOR`, `EMPRESA`
+* **Headers:** `X-Branch-Id: 1`
+* **Regla:** Desactivación lógica (soft-delete).
+* **Respuesta (`204 No Content`)**
+
+### 14.5. Configurar Ruta de Producción
+Vincula un área de producción (`COCINA`, `BARRA`, `HORNO`, `CAJA`) o tipo de documento (`KITCHEN_ORDER`, `CASHIER_RECEIPT`, `PRE_CHECK`) con la impresora física encargada de recibir las comandas.
+* **Método:** `POST`
+* **Ruta:** `/api/v1/printers/{id}/routes`
+* **Roles:** `ADMINISTRADOR`, `EMPRESA`
+* **Headers:** `X-Branch-Id: 1`
+* **Body:**
+```json
+{
+  "documentType": "KITCHEN_ORDER",
+  "productionArea": "COCINA"
+}
+```
 * **Respuesta (`200 OK`)**
 
-### 14.4. Reintentar Trabajo de Impresión desde Dead Letter Queue (DLQ)
+### 14.6. Reimpresión de Comanda en Cocina
+* **Método:** `POST`
+* **Ruta:** `/api/v1/printers/kitchen/reprint`
+* **Roles:** `COCINERO`, `CAJERO`, `ADMINISTRADOR`, `EMPRESA`
+* **Headers:** `X-Branch-Id: 1`
+* **Body:**
+```json
+{
+  "orderId": 1050,
+  "productionArea": "COCINA",
+  "targetPrinterId": 1
+}
+```
+* **Respuesta (`202 Accepted`):** `{ "jobIds": [501], "reprinted": true }`
+
+### 14.7. Reimpresión de Recibo de Caja
+* **Método:** `POST`
+* **Ruta:** `/api/v1/printers/receipts/reprint`
+* **Roles:** `CAJERO`, `ADMINISTRADOR`, `EMPRESA`
+* **Headers:** `X-Branch-Id: 1`
+* **Body:**
+```json
+{
+  "orderId": 1050,
+  "terminalCode": "POS-01",
+  "targetPrinterId": 2,
+  "reason": "Papel arrugado al cortar"
+}
+```
+* **Respuesta (`202 Accepted`):** `{ "jobId": 502, "reprinted": true }`
+
+### 14.8. Reintentar Trabajo de Impresión desde Dead Letter Queue (DLQ)
 Si una impresora se quedó sin papel o sufrió un corte de energía, el trabajo se retiene en DLQ. El operador puede reintentarlo una vez subsanado el problema físico.
 * **Método:** `POST`
-* **Ruta:** `/api/v1/printers/jobs/retry`
-* **Roles:** `ADMINISTRADOR`, `EMPRESA`, `CAJERO`
+* **Ruta:** `/api/v1/printers/jobs/{id}/retry`
+* **Roles:** `CAJERO`, `ADMINISTRADOR`, `EMPRESA`, `COCINERO`
 * **Headers:** `X-Branch-Id: 1`
-* **Body:** `{ "printJobId": 4501, "overridePrinterId": null }`
-* **Respuesta (`202 Accepted`)**
+* **Respuesta (`202 Accepted`):** `{ "jobId": 502, "status": "RETRYING" }`
+
+### 14.9. Listar Trabajos de Impresión por Sucursal
+* **Método:** `GET`
+* **Ruta:** `/api/v1/printers/jobs?status=FAILED`
+* **Headers:** `X-Branch-Id: 1`
+* **Respuesta (`200 OK`):** Array de `PrintJobResponse`.
 
 ---
 
@@ -1141,7 +1305,23 @@ Todas las excepciones del backend devuelven el formato estándar RFC 7807 (`Cont
 
 ---
 
-## 17. Guía Rápida para el Agente IA de Front-End
+## 17. Documentación Interactiva (OpenAPI 3.0 & Swagger UI)
+
+El backend expone la especificación OpenAPI autogenerada y la interfaz visual Swagger UI con soporte completo para autenticación Bearer JWT:
+
+* **Swagger UI:** `http://localhost:8081/swagger-ui/index.html`
+* **OpenAPI 3 JSON Spec:** `http://localhost:8081/v3/api-docs`
+
+### ¿Cómo probar endpoints protegidos desde Swagger UI?
+1. Haz login llamando a `POST /api/v1/auth/login` con tus credenciales para obtener el `access_token`.
+2. En Swagger UI, haz clic en el botón verde con el candado **"Authorize"** en la parte superior derecha.
+3. En el campo **Value**, ingresa únicamente el token JWT (o `Bearer <token>` si tu cliente lo requiere).
+4. Haz clic en **Authorize** y luego **Close**.
+5. Ahora todas las peticiones que ejecutes en Swagger UI llevarán automáticamente el header `Authorization: Bearer <token>`. Recuerda enviar también el header `X-Branch-Id` cuando el endpoint lo requiera.
+
+---
+
+## 18. Guía Rápida para el Agente IA de Front-End
 
 Si vas a construir una aplicación cliente para este backend:
 1. **Flujo de Inicio de Sesión:**
