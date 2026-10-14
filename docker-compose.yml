@@ -70,7 +70,14 @@ services:
       FCP_RABBIT_PORT: 5672
       FCP_RABBIT_USER: ${FCP_RABBIT_USER:-guest}
       FCP_RABBIT_PASSWORD: ${FCP_RABBIT_PASSWORD:-guest}
-      KEYCLOAK_ISSUER_URI: http://keycloak:8080/realms/fcp-realm
+      KEYCLOAK_ISSUER_URI: ${KEYCLOAK_ISSUER_URI:-http://keycloak:8080/realms/fcp-realm}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-*}
+      TAX_API_BASE_URL: ${TAX_API_BASE_URL:-https://miapi.cloud/v1}
+      TAX_API_TOKEN: ${TAX_API_TOKEN:-}
+      FCP_SMTP_HOST: ${FCP_SMTP_HOST:-smtp.myprovider.com}
+      FCP_SMTP_PORT: ${FCP_SMTP_PORT:-587}
+      FCP_SMTP_USER: ${FCP_SMTP_USER:-}
+      FCP_SMTP_PASSWORD: ${FCP_SMTP_PASSWORD:-}
     depends_on:
       postgres:
         condition: service_healthy

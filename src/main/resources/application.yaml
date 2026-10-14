@@ -42,10 +42,10 @@ spring:
 
 
   mail:
-    host: smtp.myprovider.com
-    port: 587
-    username: ${FCP_SMTP_USER}
-    password: ${FCP_SMTP_PASSWORD}
+    host: ${FCP_SMTP_HOST:smtp.myprovider.com}
+    port: ${FCP_SMTP_PORT:587}
+    username: ${FCP_SMTP_USER:}
+    password: ${FCP_SMTP_PASSWORD:}
     properties:
       mail:
         smtp:
