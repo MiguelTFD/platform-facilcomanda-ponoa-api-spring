@@ -12,17 +12,21 @@
 
 1. [Convenciones Globales, Headers y Seguridad](#1-convenciones-globales-headers-y-seguridad)
 2. [Roles de Usuario y Permisos (RBAC)](#2-roles-de-usuario-y-permisos-rbac)
-3. [Módulo 1: Usuarios y Autenticación (`/api/v1/users`, `/api/v1/profiles`)](#3-módulo-1-usuarios-y-autenticación)
+3. [Módulo 1: Autenticación y Usuarios (`/api/v1/auth`, `/api/v1/users`, `/api/v1/profiles`)](#3-módulo-1-autenticación-y-usuarios)
 4. [Módulo 2: Sucursales (`/api/v1/branches`)](#4-módulo-2-sucursales)
 5. [Módulo 3: Salones y Mesas (`/api/v1/floors`, `/api/v1/tables`)](#5-módulo-3-salones-y-mesas)
-6. [Módulo 4: Catálogo e Inventario Multi-Sucursal (`/api/v1/catalog`, `/api/v1/inventory`)](#6-módulo-4-catálogo-e-inventario-multi-sucursal)
-7. [Módulo 5: Pedidos y Pre-Cuenta (`/api/v1/orders`)](#7-módulo-5-pedidos-y-pre-cuenta)
-8. [Módulo 6: Cocina y KDS (`/api/v1/kitchen/tickets`)](#8-módulo-6-cocina-y-kds)
-9. [Módulo 7: Clientes y Facturación Electrónica (`/api/v1/customers`, `/api/v1/invoices`)](#9-módulo-7-clientes-y-facturación-electrónica)
-10. [Módulo 8: Cajas, Turnos y Corte Z (`/api/v1/cash`)](#10-módulo-8-cajas-turnos-y-corte-z)
-11. [Módulo 9: Impresoras Térmicas y Trabajos de Impresión (`/api/v1/printers`)](#11-módulo-9-impresoras-térmicas-y-hardware-pos)
-12. [Módulo 10: Eventos en Tiempo Real (WebSockets / STOMP)](#12-módulo-10-eventos-en-tiempo-real-websockets--stomp)
-13. [Manejo de Errores Estándar (RFC 7807 ProblemDetail)](#13-manejo-de-errores-estándar-rfc-7807-problemdetail)
+6. [Módulo 4: Categorías y Marcas (`/api/v1/categories`, `/api/v1/catalog/brands`)](#6-módulo-4-categorías-y-marcas)
+7. [Módulo 5: Catálogo de Productos e Inventario Multi-Sucursal (`/api/v1/catalog`, `/api/v1/inventory`)](#7-módulo-5-catálogo-de-productos-e-inventario-multi-sucursal)
+8. [Módulo 6: Pedidos y Pre-Cuenta (`/api/v1/orders`)](#8-módulo-6-pedidos-y-pre-cuenta)
+9. [Módulo 7: Cocina y KDS (`/api/v1/kitchen/tickets`)](#9-módulo-7-cocina-y-kds)
+10. [Módulo 8: Clientes y Facturación Electrónica (`/api/v1/customers`, `/api/v1/invoices`)](#10-módulo-8-clientes-y-facturación-electrónica)
+11. [Módulo 9: Cajas, Turnos y Corte Z (`/api/v1/cash`)](#11-módulo-9-cajas-turnos-y-corte-z)
+12. [Módulo 10: Gastos Operativos (`/api/v1/expenses`)](#12-módulo-10-gastos-operativos)
+13. [Módulo 11: Reportes Agregados (`/api/v1/reports`)](#11-módulo-11-reportes-agregados)
+14. [Módulo 12: Impresoras Térmicas y Hardware POS (`/api/v1/printers`)](#12-módulo-12-impresoras-térmicas-y-hardware-pos)
+15. [Módulo 13: Eventos en Tiempo Real (WebSockets / STOMP)](#13-módulo-13-eventos-en-tiempo-real-websockets--stomp)
+16. [Manejo de Errores Estándar (RFC 7807 ProblemDetail)](#14-manejo-de-errores-estándar-rfc-7807-problemdetail)
+17. [Guía Rápida para el Agente IA de Front-End](#15-guía-rápida-para-el-agente-ia-de-front-end)
 
 ---
 
@@ -32,52 +36,88 @@
 
 | Header | Tipo | Requerido | Descripción / Regla |
 | :--- | :--- | :---: | :--- |
-| `Authorization` | `String` | **SÍ** | Token Bearer JWT: `Bearer <token_keycloak>` |
-| `X-Branch-Id` | `Long` (numérico) | **SÍ\*** | ID de la sucursal activa donde se realiza la operación. (\*Obligatorio si el usuario pertenece a múltiples sucursales o es de rol `EMPRESA`). |
-| `Idempotency-Key`| `String` (UUID / hash)| **SÍ\*\*** | Clave de idempotencia única. (\*\*Obligatorio al crear pedidos `POST /api/v1/orders`). |
+| `Authorization` | `String` | **SÍ\*** | Token Bearer JWT: `Bearer <token_keycloak>`. (\*No requerido en `/api/v1/auth/**`). |
+| `X-Branch-Id` | `Long` (numérico) | **SÍ\*\*** | ID de la sucursal activa. (\*\*Obligatorio si el usuario tiene rol `EMPRESA` o no tiene sucursal fija en el token). |
+| `Idempotency-Key`| `String` (UUID / hash)| **SÍ\*\*\*** | Clave de idempotencia única. (\*\*\*Obligatorio al crear pedidos `POST /api/v1/orders`). |
 | `Content-Type` | `String` | **SÍ** | `application/json` en todas las peticiones `POST`, `PUT`, `PATCH`. |
 
 ### Respuestas HTTP Comunes
 * `200 OK`: Petición exitosa con cuerpo de retorno.
 * `201 Created`: Recurso creado exitosamente. La cabecera `Location` contiene la URI del nuevo recurso.
-* `202 Accepted`: Acción asíncrona aceptada (ej. envío a cola de impresión o DLQ).
-* `204 No Content`: Modificación o borrado lógico exitoso sin cuerpo de retorno.
-* `400 Bad Request`: Error de validación de campos (RFC 7807).
-* `401 Unauthorized`: Token ausente, expirado o malformado.
-* `403 Forbidden`: El usuario no tiene el rol necesario o no pertenece a la sucursal indicada en `X-Branch-Id`.
-* `404 Not Found`: Recurso no encontrado en la sucursal activa.
-* `409 Conflict`: Conflicto de estado (ej. mesa ocupada, duplicidad de nombre único, turno de caja ya abierto).
-* `429 Too Many Requests`: Límite de consultas o cuota excedida (Rate Limiting / Anti-Abuso).
-* `500 Internal Server Error`: Error no controlado del servidor.
+* `202 Accepted`: Acción asíncrona aceptada (ej. solicitud de impresión a hardware o reimpresión).
+* `204 No Content`: Modificación, desactivación o eliminación lógica exitosa sin cuerpo.
+* `400 Bad Request`: Error de validación de campos con desglose RFC 7807.
+* `401 Unauthorized`: Token ausente, expirado o credenciales erróneas en login.
+* `403 Forbidden`: El usuario no posee el rol requerido o intenta acceder a otra sucursal.
+* `404 Not Found`: Recurso no encontrado.
+* `409 Conflict`: Conflicto con regla de negocio (ej. mesa ocupada, turno ya abierto, nombre duplicado).
+* `422 Unprocessable Entity`: Stock insuficiente para la cantidad solicitada.
+* `429 Too Many Requests`: Límite de consultas excedido (Rate Limiting de DNI/RUC con header `Retry-After`).
+* `502 Bad Gateway`: Impresora térmica fuera de línea o inalcanzable.
+* `500 Internal Server Error`: Error no controlado del servidor con `errorId` para soporte.
 
 ---
 
 ## 2. Roles de Usuario y Permisos (RBAC)
 
-Los roles son transmitidos dentro del token JWT en el claim `realm_access.roles` con prefijo `ROLE_`:
+Los roles provienen del claim `realm_access.roles` del token JWT emitido por Keycloak:
 
 | Rol | Alcance en el Sistema |
 | :--- | :--- |
-| `EMPRESA` | Dueño o directivo general de la franquicia. Acceso irrestricto a todas las sucursales, creación de sucursales, usuarios administradores y métricas globales. |
-| `ADMINISTRADOR` | Gerente o administrador de una sucursal específica. Configuración de pisos, mesas, impresoras, inventario, precios y personal. |
-| `CAJERO` | Responsable del punto de venta (POS). Apertura y cierre de caja (Corte Z), cobro de pedidos, emisión de boletas/facturas y reimpresión de comprobantes. |
-| `MESERO` | Atención en salón. Creación de pedidos, adición de platos, solicitud de pre-cuenta y visualización del mapa de mesas. |
-| `COCINERO` | Personal de cocina y barra. Visualización de comandas en KDS, cambio de estado de preparación y reimpresión de comandas de producción. |
+| `EMPRESA` | Dueño o directivo general de la franquicia. Acceso irrestricto a todas las sucursales, creación y edición de sucursales, usuarios administradores y reportes agregados globales. |
+| `ADMINISTRADOR` | Gerente de una sucursal específica. Configuración de pisos, mesas, impresoras, inventario, precios, gastos y personal de la sucursal. |
+| `CAJERO` | Punto de venta (POS). Apertura y cierre de caja (Corte Z), cobro de pedidos, emisión de comprobantes, registro de gastos y movimientos. |
+| `MESERO` | Salón. Creación de pedidos, adición de platos, solicitud de pre-cuenta y visualización del mapa de mesas. |
+| `COCINERO` | Cocina y barra. Visualización de comandas en KDS, cambio de estado de preparación y reimpresión de comandas. |
 
 ---
 
-## 3. Módulo 1: Usuarios y Autenticación
+## 3. Módulo 1: Autenticación y Usuarios
 
-Base URL: `/api/v1/users` y `/api/v1/profiles`
+### 3.1. Proxy de Inicio de Sesión (Login)
+Permite a cualquier frontend autenticar al usuario enviando email y contraseña a Spring Boot, evitando llamadas directas a Keycloak y problemas de CORS.
+* **Método:** `POST`
+* **Ruta:** `/api/v1/auth/login`
+* **Autenticación:** Pública (No requiere token).
+* **Body:**
+```json
+{
+  "email": "cajero.norte@facilcomanda.com",
+  "password": "password123"
+}
+```
+* **Respuesta (`200 OK`):**
+```json
+{
+  "access_token": "eyJhbGciOiJSUzI1NiIsIn...",
+  "token_type": "Bearer",
+  "expires_in": 300,
+  "refresh_token": "eyJhbGciOiJIUzI1NiIsIn...",
+  "refresh_expires_in": 1800,
+  "scope": "openid email profile"
+}
+```
 
-### 3.1. Sincronizar Perfil del Usuario Autenticado
-Actualiza o crea el usuario local a partir de los claims del JWT de Keycloak.
+### 3.2. Refrescar Token de Acceso
+Intercambia un `refresh_token` por un nuevo `access_token` válido.
+* **Método:** `POST`
+* **Ruta:** `/api/v1/auth/refresh`
+* **Autenticación:** Pública (No requiere token).
+* **Body:**
+```json
+{
+  "refreshToken": "eyJhbGciOiJIUzI1NiIsIn..."
+}
+```
+* **Respuesta (`200 OK`):** Mismo formato que login.
+
+### 3.3. Sincronizar Perfil Propio
 * **Método:** `POST`
 * **Ruta:** `/api/v1/profiles/sync`
 * **Roles:** Cualquier usuario autenticado.
-* **Respuesta (`200 OK`):** Vacío.
+* **Respuesta (`200 OK`)**
 
-### 3.2. Obtener Perfil Propio
+### 3.4. Obtener Perfil Propio
 * **Método:** `GET`
 * **Ruta:** `/api/v1/profiles/me`
 * **Roles:** Cualquier usuario autenticado.
@@ -96,7 +136,7 @@ Actualiza o crea el usuario local a partir de los claims del JWT de Keycloak.
 }
 ```
 
-### 3.3. Crear Usuario Administrador de Sucursal
+### 3.5. Crear Administrador de Sucursal
 * **Método:** `POST`
 * **Ruta:** `/api/v1/users/admin`
 * **Roles:** `EMPRESA`
@@ -112,7 +152,7 @@ Actualiza o crea el usuario local a partir de los claims del JWT de Keycloak.
 ```
 * **Respuesta (`201 Created`):** Header `Location: /api/v1/users/{id}`.
 
-### 3.4. Crear Usuario Operativo (Staff)
+### 3.6. Crear Personal Operativo (Staff)
 * **Método:** `POST`
 * **Ruta:** `/api/v1/users/staff`
 * **Roles:** `ADMINISTRADOR`, `EMPRESA`
@@ -130,11 +170,39 @@ Actualiza o crea el usuario local a partir de los claims del JWT de Keycloak.
 * **Restricciones:** `role` debe ser `MESERO`, `COCINERO` o `CAJERO`.
 * **Respuesta (`201 Created`):** Header `Location: /api/v1/users/{id}`.
 
-### 3.5. Listar Usuarios
+### 3.7. Listar Usuarios
 * **Método:** `GET`
 * **Ruta:** `/api/v1/users?branchId={id}`
 * **Roles:** `ADMINISTRADOR`, `EMPRESA`
-* **Respuesta (`200 OK`):** Array de objetos `UserResponse`.
+* **Respuesta (`200 OK`):** Array de `UserResponse`.
+
+### 3.8. Obtener Detalle de Usuario
+* **Método:** `GET`
+* **Ruta:** `/api/v1/users/{id}`
+* **Roles:** `ADMINISTRADOR`, `EMPRESA`
+* **Respuesta (`200 OK`):** Objeto `UserResponse`.
+
+### 3.9. Actualizar Usuario
+* **Método:** `PUT`
+* **Ruta:** `/api/v1/users/{id}`
+* **Roles:** `ADMINISTRADOR`, `EMPRESA`
+* **Body:**
+```json
+{
+  "firstName": "Juan Carlos",
+  "lastName": "Gómez Silva",
+  "phoneNumber": "912345679",
+  "role": "MESERO",
+  "branchId": 1,
+  "isActive": true
+}
+```
+* **Respuesta (`204 No Content`)**
+
+### 3.10. Desactivar Usuario (Soft-Delete)
+* **Método:** `PATCH /api/v1/users/{id}/deactivate` o `DELETE /api/v1/users/{id}`
+* **Roles:** `ADMINISTRADOR`, `EMPRESA`
+* **Respuesta (`204 No Content`)**
 
 ---
 
@@ -149,13 +217,10 @@ Base URL: `/api/v1/branches`
 * **Body:**
 ```json
 {
-  "code": "SUC-002",
   "name": "Sucursal San Isidro",
+  "code": "SUC-002",
   "address": "Av. Javier Prado 1234",
-  "city": "Lima",
-  "phone": "+5114567890",
-  "email": "sanisidro@facilcomanda.com",
-  "taxId": "20601234567"
+  "phoneNumber": "+5114567890"
 }
 ```
 * **Respuesta (`201 Created`):** Header `Location: /api/v1/branches/{id}`.
@@ -169,17 +234,35 @@ Base URL: `/api/v1/branches`
 [
   {
     "id": 1,
-    "code": "SUC-001",
     "name": "Sucursal Central",
+    "code": "SUC-001",
     "address": "Av. Larco 456",
-    "city": "Lima",
-    "phone": "+5112223344",
-    "email": "central@facilcomanda.com",
-    "taxId": "20601234567",
+    "phoneNumber": "+5112223344",
     "isActive": true
   }
 ]
 ```
+
+### 4.3. Obtener Detalle de Sucursal
+* **Método:** `GET`
+* **Ruta:** `/api/v1/branches/{id}`
+* **Roles:** Cualquier usuario autenticado.
+* **Respuesta (`200 OK`)**
+
+### 4.4. Actualizar Sucursal
+* **Método:** `PUT`
+* **Ruta:** `/api/v1/branches/{id}`
+* **Roles:** `EMPRESA`
+* **Body:**
+```json
+{
+  "name": "Sucursal San Isidro Premium",
+  "address": "Av. Javier Prado Oeste 1234, San Isidro",
+  "phoneNumber": "+5114567899",
+  "isActive": true
+}
+```
+* **Respuesta (`204 No Content`)**
 
 ---
 
@@ -217,7 +300,28 @@ Base URL: `/api/v1`
 ]
 ```
 
-### 5.3. Crear Mesa
+### 5.3. Actualizar Piso / Salón
+* **Método:** `PUT`
+* **Ruta:** `/api/v1/floors/{id}`
+* **Roles:** `ADMINISTRADOR`, `EMPRESA`
+* **Headers:** `X-Branch-Id: 1`
+* **Body:**
+```json
+{
+  "name": "Terraza Lounge & Bar",
+  "description": "Área techada con música ambiental"
+}
+```
+* **Respuesta (`204 No Content`)**
+
+### 5.4. Desactivar Piso / Salón
+* **Método:** `PATCH /api/v1/floors/{id}/deactivate` o `DELETE /api/v1/floors/{id}`
+* **Roles:** `ADMINISTRADOR`, `EMPRESA`
+* **Headers:** `X-Branch-Id: 1`
+* **Regla:** Falla con `409 Conflict` si alguna mesa en el piso está ocupada.
+* **Respuesta (`204 No Content`)**
+
+### 5.5. Crear Mesa
 * **Método:** `POST`
 * **Ruta:** `/api/v1/tables`
 * **Roles:** `ADMINISTRADOR`, `EMPRESA`
@@ -227,15 +331,15 @@ Base URL: `/api/v1`
 {
   "floorId": 10,
   "name": "Mesa 101",
-  "description": "Mesa redonda para 4 personas cerca a la ventana",
+  "description": "Cerca a la ventana exterior",
   "chairs": 4
 }
 ```
 * **Respuesta (`201 Created`):** Header `Location: /api/v1/tables/{id}`.
 
-### 5.4. Listar Mesas de la Sucursal
+### 5.6. Listar Mesas de la Sucursal
 * **Método:** `GET`
-* **Ruta:** `/api/v1/tables?floorId={id}` (el query param `floorId` es opcional)
+* **Ruta:** `/api/v1/tables?floorId=10` (parámetro `floorId` opcional)
 * **Headers:** `X-Branch-Id: 1`
 * **Respuesta (`200 OK`):**
 ```json
@@ -245,63 +349,182 @@ Base URL: `/api/v1`
     "branchId": 1,
     "floorId": 10,
     "name": "Mesa 101",
-    "description": "Mesa redonda para 4 personas",
+    "description": "Cerca a la ventana exterior",
     "state": "AVAILABLE",
     "chairs": 4
   }
 ]
 ```
-> **Valores posibles de `state`:** `AVAILABLE` (Libre), `OCCUPIED` (Ocupada con orden activa), `BILL_REQUESTED` (Pre-cuenta solicitada), `CLEANING` (En limpieza), `RESERVED` (Reservada), `OUT_OF_SERVICE` (Fuera de servicio).
+> **Valores posibles de `state` de mesa:** `AVAILABLE` (Libre), `OCCUPIED` (Ocupada con comanda), `BILL_REQUESTED` (Pre-cuenta solicitada), `OUT_OF_SERVICE` (Fuera de servicio / mantenimiento).
 
-### 5.5. Cambiar Estado de una Mesa
-* **Método:** `PATCH`
-* **Ruta:** `/api/v1/tables/{id}/state`
-* **Roles:** `MESERO`, `CAJERO`, `ADMINISTRADOR`, `EMPRESA`
+### 5.7. Actualizar Mesa
+* **Método:** `PUT`
+* **Ruta:** `/api/v1/tables/{id}`
+* **Roles:** `ADMINISTRADOR`, `EMPRESA`
 * **Headers:** `X-Branch-Id: 1`
 * **Body:**
 ```json
 {
-  "state": "CLEANING"
+  "floorId": 10,
+  "name": "Mesa 101 VIP",
+  "description": "Mesa esquinera cómoda",
+  "chairs": 6
 }
 ```
 * **Respuesta (`204 No Content`)**
 
-### 5.6. Desactivar / Borrado Lógico de Mesa
-* **Método:** `DELETE` o `PATCH /api/v1/tables/{id}/deactivate`
+### 5.8. Cambiar Estado de la Mesa
+* **Método:** `PATCH`
+* **Ruta:** `/api/v1/tables/{id}/state`
+* **Roles:** `MESERO`, `CAJERO`, `ADMINISTRADOR`, `EMPRESA`
+* **Headers:** `X-Branch-Id: 1`
+* **Body:** `{ "state": "OUT_OF_SERVICE" }`
+* **Respuesta (`204 No Content`)**
+
+### 5.9. Desactivar / Eliminar Mesa
+* **Método:** `PATCH /api/v1/tables/{id}/deactivate` o `DELETE /api/v1/tables/{id}`
 * **Roles:** `ADMINISTRADOR`, `EMPRESA`
 * **Headers:** `X-Branch-Id: 1`
 * **Respuesta (`204 No Content`)**
 
 ---
 
-## 6. Módulo 4: Catálogo e Inventario Multi-Sucursal
+## 6. Módulo 4: Categorías y Marcas
+
+Base URL: `/api/v1/categories` y `/api/v1/catalog/brands`
+
+### 6.1. Listar Categorías
+* **Método:** `GET`
+* **Ruta:** `/api/v1/categories`
+* **Roles:** Cualquier usuario autenticado.
+* **Respuesta (`200 OK`):**
+```json
+[
+  {
+    "id": 1,
+    "name": "Platos de Fondo",
+    "description": "Platos fuertes principales",
+    "isActive": true
+  },
+  {
+    "id": 2,
+    "name": "Bebidas y Cócteles",
+    "description": "Bebidas frías, calientes y tragos",
+    "isActive": true
+  }
+]
+```
+
+### 6.2. Crear Categoría
+* **Método:** `POST`
+* **Ruta:** `/api/v1/categories`
+* **Roles:** `ADMINISTRADOR`, `EMPRESA`
+* **Body:**
+```json
+{
+  "name": "Entradas Criollas",
+  "description": "Causas, papas rellenas y anticuchos"
+}
+```
+* **Respuesta (`201 Created`):** Header `Location: /api/v1/categories/{id}`.
+
+### 6.3. Actualizar Categoría
+* **Método:** `PUT`
+* **Ruta:** `/api/v1/categories/{id}`
+* **Roles:** `ADMINISTRADOR`, `EMPRESA`
+* **Body:**
+```json
+{
+  "name": "Entradas y Piques",
+  "description": "Para compartir en mesa"
+}
+```
+* **Respuesta (`204 No Content`)**
+
+### 6.4. Desactivar Categoría (Soft-Delete)
+* **Método:** `DELETE`
+* **Ruta:** `/api/v1/categories/{id}`
+* **Roles:** `ADMINISTRADOR`, `EMPRESA`
+* **Respuesta (`204 No Content`)**
+
+### 6.5. Listar Marcas
+* **Método:** `GET`
+* **Ruta:** `/api/v1/catalog/brands`
+* **Roles:** Cualquier usuario autenticado.
+* **Respuesta (`200 OK`):**
+```json
+[
+  {
+    "id": 1,
+    "name": "FacilComanda Gourmet",
+    "description": "Línea premium de la casa",
+    "isActive": true
+  }
+]
+```
+
+### 6.6. Crear Marca
+* **Método:** `POST`
+* **Ruta:** `/api/v1/catalog/brands`
+* **Roles:** `ADMINISTRADOR`, `EMPRESA`
+* **Body:**
+```json
+{
+  "name": "Cusqueña",
+  "description": "Cervezas industriales premium"
+}
+```
+* **Respuesta (`201 Created`):** Header `Location: /api/v1/catalog/brands/{id}`.
+
+### 6.7. Actualizar Marca
+* **Método:** `PUT`
+* **Ruta:** `/api/v1/catalog/brands/{id}`
+* **Roles:** `ADMINISTRADOR`, `EMPRESA`
+* **Body:**
+```json
+{
+  "name": "Cusqueña Cerveza",
+  "description": "Variedades Trigo, Negra y Dorada"
+}
+```
+* **Respuesta (`204 No Content`)**
+
+### 6.8. Desactivar Marca (Soft-Delete)
+* **Método:** `DELETE`
+* **Ruta:** `/api/v1/catalog/brands/{id}`
+* **Roles:** `ADMINISTRADOR`, `EMPRESA`
+* **Respuesta (`204 No Content`)**
+
+---
+
+## 7. Módulo 5: Catálogo de Productos e Inventario Multi-Sucursal
 
 Base URL: `/api/v1/catalog` e `/api/v1/inventory`
 
-### 6.1. Crear Producto en Catálogo Maestro
+### 7.1. Crear Producto en Catálogo Maestro
 * **Método:** `POST`
 * **Ruta:** `/api/v1/catalog/products`
 * **Roles:** `ADMINISTRADOR`, `EMPRESA`
 * **Body:**
 ```json
 {
-  "name": "Lomo Saltado Clásico",
-  "description": "Trozos de lomo fino salteados al wok con cebolla, tomate y papas fritas",
   "brandId": 1,
-  "categoryId": 2,
+  "name": "Lomo Saltado Clásico",
+  "baseDescription": "Trozos de lomo fino salteados al wok con cebolla, tomate y papas fritas",
   "productionArea": "COCINA",
-  "skuPresentations": [
+  "categoryIds": [1],
+  "skus": [
     {
-      "name": "Porción Personal",
       "skuCode": "LOMO-PERS-01",
+      "presentationName": "Porción Personal",
       "currentPrice": 48.00
     }
   ]
 }
 ```
-* **Respuesta (`201 Created`)**
+* **Respuesta (`201 Created`):** Header `Location: /api/v1/catalog/products/{id}`.
 
-### 6.2. Listar Catálogo Paginado
+### 7.2. Listar Resumen del Catálogo
 * **Método:** `GET`
 * **Ruta:** `/api/v1/catalog/products?pageNumber=0&pageSize=20`
 * **Respuesta (`200 OK`):**
@@ -316,8 +539,80 @@ Base URL: `/api/v1/catalog` e `/api/v1/inventory`
 ]
 ```
 
-### 6.3. Configurar Precio y Disponibilidad por Sucursal
-Permite sobreescribir el precio del plato y habilitarlo o deshabilitarlo según la sucursal.
+### 7.3. Obtener Detalle de un Producto con Presentaciones (SKUs)
+* **Método:** `GET`
+* **Ruta:** `/api/v1/catalog/products/{id}`
+* **Respuesta (`200 OK`):**
+```json
+{
+  "id": 101,
+  "brandId": 1,
+  "brandName": "FacilComanda Gourmet",
+  "name": "Lomo Saltado Clásico",
+  "baseDescription": "Trozos de lomo fino salteados al wok con cebolla, tomate y papas fritas",
+  "productionArea": "COCINA",
+  "isActive": true,
+  "categories": [
+    {
+      "categoryId": 1
+    }
+  ],
+  "skus": [
+    {
+      "id": 1,
+      "skuCode": "LOMO-PERS-01",
+      "presentationName": "Porción Personal",
+      "currentPrice": 48.00,
+      "isActive": true
+    }
+  ]
+}
+```
+
+### 7.4. Editar Información Básica del Producto
+* **Método:** `PUT`
+* **Ruta:** `/api/v1/catalog/products/{id}`
+* **Roles:** `ADMINISTRADOR`, `EMPRESA`
+* **Body:**
+```json
+{
+  "brandId": 1,
+  "name": "Lomo Saltado Clásico Angus",
+  "baseDescription": "Carne Angus certificada salteada al wok",
+  "productionArea": "COCINA",
+  "categoryIds": [1]
+}
+```
+* **Respuesta (`204 No Content`)**
+
+### 7.5. Desactivar Producto (Soft-Delete)
+* **Método:** `DELETE`
+* **Ruta:** `/api/v1/catalog/products/{id}`
+* **Roles:** `ADMINISTRADOR`, `EMPRESA`
+* **Respuesta (`204 No Content`)**
+
+### 7.6. Listar Menú Enriquecido de la Sucursal
+Devuelve los productos y SKUs activos con sus nombres, códigos, precios vigentes (o sobreescritos por sucursal) y disponibilidad.
+* **Método:** `GET`
+* **Ruta:** `/api/v1/catalog/branches/products` o `/api/v1/catalog/branches/{branchId}/products`
+* **Headers:** `X-Branch-Id: 1`
+* **Respuesta (`200 OK`):**
+```json
+[
+  {
+    "id": 15,
+    "branchId": 1,
+    "skuId": 1,
+    "skuCode": "LOMO-PERS-01",
+    "productName": "Lomo Saltado Clásico",
+    "presentationName": "Porción Personal",
+    "price": 52.00,
+    "isAvailable": true
+  }
+]
+```
+
+### 7.7. Configurar Precio y Disponibilidad por Sucursal
 * **Método:** `PUT`
 * **Ruta:** `/api/v1/catalog/branches/products`
 * **Roles:** `ADMINISTRADOR`, `EMPRESA`
@@ -332,51 +627,34 @@ Permite sobreescribir el precio del plato y habilitarlo o deshabilitarlo según 
 ```
 * **Respuesta (`200 OK`)**
 
-### 6.4. Inicializar / Ajustar Stock de SKU
+### 7.8. Ajustar Stock de SKU
 * **Método:** `POST`
 * **Ruta:** `/api/v1/inventory`
 * **Roles:** `ADMINISTRADOR`, `EMPRESA`
 * **Headers:** `X-Branch-Id: 1`
-* **Body:**
-```json
-{
-  "skuId": 1,
-  "quantity": 50
-}
-```
+* **Body:** `{ "skuId": 1, "quantity": 50 }`
 * **Respuesta (`200 OK`)**
 
-### 6.5. Consultar Stock de una Sucursal
+### 7.9. Consultar Stock de una Sucursal
 * **Método:** `GET`
 * **Ruta:** `/api/v1/inventory` o `/api/v1/inventory/skus/{skuId}`
 * **Headers:** `X-Branch-Id: 1`
-* **Respuesta (`200 OK`):**
-```json
-[
-  {
-    "id": 1,
-    "branchId": 1,
-    "skuId": 1,
-    "quantity": 48,
-    "updatedAt": "2026-10-14T02:30:00Z"
-  }
-]
-```
+* **Respuesta (`200 OK`)**
 
 ---
 
-## 7. Módulo 5: Pedidos y Pre-Cuenta
+## 8. Módulo 6: Pedidos y Pre-Cuenta
 
 Base URL: `/api/v1/orders`
 
-### 7.1. Crear Pedido (Comanda Inicial)
+### 8.1. Crear Pedido (Comanda Inicial)
 Crea la orden, ocupa atómicamente la mesa, decrementa el stock en BD, emite el evento para impresión de tickets de cocina y actualiza el KDS.
 * **Método:** `POST`
 * **Ruta:** `/api/v1/orders`
 * **Roles:** `MESERO`, `CAJERO`, `ADMINISTRADOR`, `EMPRESA`
 * **Headers Requeridos:**
   * `X-Branch-Id: 1`
-  * `Idempotency-Key: 9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d` (Previene duplicación de pedidos por doble click o reintentos de red)
+  * `Idempotency-Key: 9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d` (Previene duplicación de pedidos)
 * **Body:**
 ```json
 {
@@ -388,11 +666,6 @@ Crea la orden, ocupa atómicamente la mesa, decrementa el stock en BD, emite el 
       "skuId": 1,
       "quantity": 2,
       "comments": "Término medio, papas bien crocantes"
-    },
-    {
-      "skuId": 5,
-      "quantity": 1,
-      "comments": "Con hielo"
     }
   ]
 }
@@ -400,7 +673,49 @@ Crea la orden, ocupa atómicamente la mesa, decrementa el stock en BD, emite el 
 * **Restricciones:** `orderType` puede ser `DINE_IN` (En salón), `TAKE_AWAY` (Para llevar) o `DELIVERY`.
 * **Respuesta (`201 Created`):** Header `Location: /api/v1/orders/{orderId}`.
 
-### 7.2. Adicionar Ítems a una Orden Existente
+### 8.2. Listar Pedidos de la Sucursal (Enriquecido)
+Devuelve la lista de órdenes activas de la sucursal con el nombre legible de cada plato y mesa.
+* **Método:** `GET`
+* **Ruta:** `/api/v1/orders`
+* **Headers:** `X-Branch-Id: 1`
+* **Respuesta (`200 OK`):**
+```json
+[
+  {
+    "id": 1050,
+    "branchId": 1,
+    "appUserId": "e98e2197-28d8-4b71-97b7-785bc03cbbf6",
+    "idempotencyKey": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
+    "tableId": 501,
+    "tableName": "Mesa 101 (Terraza Principal)",
+    "orderType": "DINE_IN",
+    "notes": "Cliente alérgico a los mariscos",
+    "totalAmount": 104.00,
+    "status": "PENDING",
+    "cancelledBy": null,
+    "cancellationReason": null,
+    "cancelledAt": null,
+    "items": [
+      {
+        "skuId": 1,
+        "name": "Porción Personal",
+        "quantity": 2,
+        "unitPrice": 52.00,
+        "subtotal": 104.00,
+        "comments": "Término medio, papas bien crocantes"
+      }
+    ]
+  }
+]
+```
+
+### 8.3. Obtener Detalle de un Pedido (Enriquecido)
+* **Método:** `GET`
+* **Ruta:** `/api/v1/orders/{id}`
+* **Headers:** `X-Branch-Id: 1`
+* **Respuesta (`200 OK`):** Objeto `OrderResponse` individual idéntico al elemento de la lista anterior.
+
+### 8.4. Adicionar Ítems a una Orden Existente
 Permite agregar platos o bebidas adicionales a una mesa ya abierta. Imprime únicamente la adición en las impresoras de producción correspondientes.
 * **Método:** `POST`
 * **Ruta:** `/api/v1/orders/{id}/items`
@@ -421,7 +736,7 @@ Permite agregar platos o bebidas adicionales a una mesa ya abierta. Imprime úni
 ```
 * **Respuesta (`200 OK`)**
 
-### 7.3. Cancelar Pedido
+### 8.5. Cancelar Pedido
 Libera la mesa, devuelve el stock al inventario, cancela las comandas de cocina y registra el motivo y usuario responsable de la cancelación.
 * **Método:** `POST`
 * **Ruta:** `/api/v1/orders/{id}/cancel`
@@ -435,8 +750,8 @@ Libera la mesa, devuelve el stock al inventario, cancela las comandas de cocina 
 ```
 * **Respuesta (`200 OK`)**
 
-### 7.4. Consultar Pre-Cuenta (Resumen de Cuenta)
-Calcula el subtotal (base gravada), IGV (18%) y total acumulado para mostrar al mozo o en la tablet.
+### 8.6. Consultar Pre-Cuenta (Resumen de Cuenta)
+Calcula el subtotal (base gravada), IGV (18%), propina sugerida (10%) y total acumulado.
 * **Método:** `GET`
 * **Ruta:** `/api/v1/orders/{id}/pre-check` o `/api/v1/orders/tables/{tableId}/pre-check`
 * **Headers:** `X-Branch-Id: 1`
@@ -445,27 +760,27 @@ Calcula el subtotal (base gravada), IGV (18%) y total acumulado para mostrar al 
 {
   "orderId": 1050,
   "branchId": 1,
-  "tableName": "Mesa 101 (Terraza Principal)",
   "tableId": 501,
+  "tableName": "Mesa 101",
   "orderType": "DINE_IN",
+  "subtotal": 88.14,
+  "taxAmount": 15.86,
+  "totalAmount": 104.00,
+  "suggestedTip10": 10.40,
   "items": [
     {
       "skuId": 1,
-      "productName": "Lomo Saltado Clásico",
+      "name": "Porción Personal",
       "quantity": 2,
       "unitPrice": 52.00,
-      "subtotal": 104.00,
+      "lineTotal": 104.00,
       "comments": "Término medio"
     }
-  ],
-  "subtotal": 88.14,
-  "igv": 15.86,
-  "totalAmount": 104.00,
-  "requestedAt": "2026-10-14T03:00:00Z"
+  ]
 }
 ```
 
-### 7.5. Mandar a Imprimir Ticket de Pre-Cuenta
+### 8.7. Mandar a Imprimir Ticket de Pre-Cuenta
 Cambia el estado de la mesa a `BILL_REQUESTED` y despacha el ticket físico a la impresora térmica asignada o a la impresora de caja.
 * **Método:** `POST`
 * **Ruta:** `/api/v1/orders/{id}/pre-check/print` o `/api/v1/orders/tables/{tableId}/pre-check/print?targetPrinterId={id}`
@@ -475,11 +790,11 @@ Cambia el estado de la mesa a `BILL_REQUESTED` y despacha el ticket físico a la
 
 ---
 
-## 8. Módulo 6: Cocina y KDS
+## 9. Módulo 7: Cocina y KDS
 
 Base URL: `/api/v1/kitchen/tickets`
 
-### 8.1. Listar Comandas Activas de Cocina (KDS)
+### 9.1. Listar Comandas Activas de Cocina (KDS)
 * **Método:** `GET`
 * **Ruta:** `/api/v1/kitchen/tickets`
 * **Roles:** `COCINERO`, `CAJERO`, `ADMINISTRADOR`, `EMPRESA`, `MESERO`
@@ -497,51 +812,38 @@ Base URL: `/api/v1/kitchen/tickets`
   }
 ]
 ```
-> **Valores posibles de `status` de ticket:** `QUEUED` (En cola), `PREPARING` (En preparación), `READY` (Platos listos para servir), `DELIVERED` (Servido en mesa), `CANCELLED` (Comanda anulada).
+> **Valores posibles de `status`:** `QUEUED`, `PREPARING`, `READY`, `DELIVERED`, `CANCELLED`.
 
-### 8.2. Actualizar Estado de Preparación
+### 9.2. Actualizar Estado de Preparación
 * **Método:** `PATCH`
 * **Ruta:** `/api/v1/kitchen/tickets/{id}/status`
 * **Roles:** `COCINERO`, `CAJERO`, `ADMINISTRADOR`, `EMPRESA`, `MESERO`
 * **Headers:** `X-Branch-Id: 1`
-* **Body:**
-```json
-{
-  "status": "READY"
-}
-```
-* **Respuesta (`200 OK`):** Retorna el `KitchenTicketResponse` actualizado.
+* **Body:** `{ "status": "READY" }`
+* **Respuesta (`200 OK`)**
 
 ---
 
-## 9. Módulo 7: Clientes y Facturación Electrónica
+## 10. Módulo 8: Clientes y Facturación Electrónica
 
 Base URL: `/api/v1/customers` e `/api/v1/invoices`
 
-### 9.1. Consulta de RUC / DNI (Con Anti-Abuso & Rate Limiting)
-Consulta inteligente de 3 niveles: Base de Datos local (costo S/ 0) ➔ Caché en memoria ➔ API SUNAT/RENIEC (si hay cuota disponible).
+### 10.1. Consulta Rápida de DNI / RUC (Lookup con Rate Limiting)
 * **Método:** `GET`
-* **Ruta:** `/api/v1/customers/lookup?documentType=RUC&documentNumber=20601234567`
-* **Roles:** `CAJERO`, `ADMINISTRADOR`, `EMPRESA`, `MESERO`
-* **Headers:** `X-Branch-Id: 1`
+* **Ruta:** `/api/v1/customers/lookup?docType=DNI&docNumber=71234567`
+* **Roles:** `CAJERO`, `ADMINISTRADOR`, `EMPRESA`
 * **Respuesta (`200 OK`):**
 ```json
 {
-  "found": true,
-  "name": "INVERSIONES RESTAURANTERAS S.A.C.",
-  "identityDocumentType": "RUC",
-  "identityDocumentNumber": "20601234567",
-  "phoneNumber": null,
-  "address": "CAL. LOS PINOS NRO. 120 INT. 402 LIMA - MIRAFLORES",
-  "source": "LOCAL",
-  "errorCode": null,
-  "message": null
+  "documentType": "DNI",
+  "documentNumber": "71234567",
+  "fullName": "JUAN PEREZ COTRINA",
+  "address": "AV. AREQUIPA 123, LIMA",
+  "source": "EXTERNAL_CACHE"
 }
 ```
-> **Nota de Seguridad Anti-Abuso:** Si un usuario o IP realiza 5 consultas erróneas consecutivas (datos inexistentes), el sistema aplica una cuarentena de 300 segundos retornando HTTP 429 con mensaje explicativo.
 
-### 9.2. Cobrar Orden y Emitir Comprobante (Boleta / Factura / Ticket)
-Soporta pago dividido (Split Payment: ej. parte en Efectivo y parte en Yape), calcula el vuelto exacto, asocia la venta al turno de caja abierto del cajero y genera el correlativo fiscal atómico consecutivo.
+### 10.2. Cobrar Orden y Emitir Comprobante (Boleta / Factura / Ticket)
 * **Método:** `POST`
 * **Ruta:** `/api/v1/invoices/pay`
 * **Roles:** `CAJERO`, `ADMINISTRADOR`, `EMPRESA`
@@ -551,73 +853,51 @@ Soporta pago dividido (Split Payment: ej. parte en Efectivo y parte en Yape), ca
 {
   "orderId": 1050,
   "invoiceType": "BOLETA",
-  "customer": {
-    "identityDocumentType": "DNI",
-    "identityDocumentNumber": "72345678",
-    "name": "Maria Fernandez Quispe",
-    "phoneNumber": "987112233",
-    "address": "Av. Brasil 789, Lima"
-  },
+  "customerName": "JUAN PEREZ COTRINA",
+  "customerDocType": "DNI",
+  "customerDocNumber": "71234567",
+  "customerAddress": "AV. AREQUIPA 123",
+  "notes": "Consumo de restaurante",
   "payments": [
     {
       "method": "EFECTIVO",
-      "amount": 50.00,
-      "reference": null
+      "amount": 50.00
     },
     {
       "method": "YAPE",
       "amount": 54.00,
-      "reference": "OP-987654"
+      "reference": "OP-987123"
     }
   ]
 }
 ```
-* **Restricciones:**
-  * `invoiceType`: `BOLETA`, `FACTURA`, `TICKET`. (Si es `FACTURA`, el cliente debe tener `RUC` válido).
-  * `payments.method`: `EFECTIVO`, `YAPE`, `PLIN`, `TARJETA`, `CREDITO`.
-  * La suma de `payments.amount` debe ser mayor o igual al total de la orden.
 * **Respuesta (`201 Created`):**
 ```json
 {
-  "id": 9001,
-  "branchId": 1,
-  "cashShiftId": 45,
-  "orderId": 1050,
-  "customerId": 320,
-  "customerName": "Maria Fernandez Quispe",
-  "customerDocumentType": "DNI",
-  "customerDocumentNumber": "72345678",
-  "invoiceNumber": "B001-00000045",
+  "invoiceId": 901,
+  "invoiceNumber": "B001-00000042",
   "invoiceType": "BOLETA",
   "orderTotal": 104.00,
   "amountPaid": 104.00,
   "changeAmount": 0.00,
-  "paidAt": "2026-10-14T03:05:00Z",
-  "payments": [
-    {
-      "id": 1,
-      "method": "EFECTIVO",
-      "amount": 50.00,
-      "reference": null
-    },
-    {
-      "id": 2,
-      "method": "YAPE",
-      "amount": 54.00,
-      "reference": "OP-987654"
-    }
-  ]
+  "paidAt": "2026-10-14T03:10:00Z"
 }
 ```
 
+### 10.3. Reimprimir Comprobante de Pago
+* **Método:** `POST`
+* **Ruta:** `/api/v1/invoices/{id}/print`
+* **Roles:** `CAJERO`, `ADMINISTRADOR`, `EMPRESA`
+* **Headers:** `X-Branch-Id: 1`
+* **Respuesta (`202 Accepted`)**
+
 ---
 
-## 10. Módulo 8: Cajas, Turnos y Corte Z
+## 11. Módulo 9: Cajas, Turnos y Corte Z
 
 Base URL: `/api/v1/cash`
 
-### 10.1. Abrir Turno de Caja (Apertura)
-Abre la sesión de caja con un saldo base inicial en efectivo.
+### 11.1. Abrir Turno de Caja
 * **Método:** `POST`
 * **Ruta:** `/api/v1/cash/shifts/open`
 * **Roles:** `CAJERO`, `ADMINISTRADOR`, `EMPRESA`
@@ -627,122 +907,162 @@ Abre la sesión de caja con un saldo base inicial en efectivo.
 {
   "cashRegisterId": 1,
   "openingAmount": 150.00,
-  "notes": "Apertura turno mañana - Sencillo completo"
+  "notes": "Fondo inicial para vuelto"
 }
 ```
 * **Respuesta (`201 Created`):** Header `Location: /api/v1/cash/shifts/{shiftId}`.
 
-### 10.2. Registrar Movimiento Manual (Ingreso / Egreso Menor)
-Para registrar salidas por compras menores (ej. hielo, verduras de urgencia) o ingresos extraordinarios.
-* **Método:** `POST`
-* **Ruta:** `/api/v1/cash/shifts/{shiftId}/movements`
-* **Roles:** `CAJERO`, `ADMINISTRADOR`, `EMPRESA`
-* **Headers:** `X-Branch-Id: 1`
-* **Body:**
-```json
-{
-  "type": "EXPENSE",
-  "amount": 25.00,
-  "reason": "Compra de bolsa de hielo para el bar"
-}
-```
-* **Restricciones:** `type` puede ser `INCOME` (Ingreso) o `EXPENSE` (Gasto/Egreso).
-* **Respuesta (`201 Created`)**
-
-### 10.3. Consultar Turno Actual del Cajero
+### 11.2. Consultar Turno Actual del Cajero
 * **Método:** `GET`
 * **Ruta:** `/api/v1/cash/shifts/current`
 * **Roles:** `CAJERO`, `ADMINISTRADOR`, `EMPRESA`
 * **Headers:** `X-Branch-Id: 1`
-* **Respuesta (`200 OK`):**
-```json
-{
-  "id": 45,
-  "branchId": 1,
-  "cashRegisterId": 1,
-  "cashRegisterName": "Caja Principal Salón",
-  "cashierUserId": "e98e2197-28d8-4b71-97b7-785bc03cbbf6",
-  "cashierName": "Carlos Mendoza",
-  "status": "OPEN",
-  "openingAmount": 150.00,
-  "openedAt": "2026-10-14T08:00:00Z",
-  "closedAt": null,
-  "closingCashCounted": null,
-  "expectedCashAmount": null,
-  "cashDifference": null,
-  "totalSalesAmount": 1250.00,
-  "paymentsByMethod": {
-    "EFECTIVO": 450.00,
-    "YAPE": 350.00,
-    "TARJETA": 450.00
-  },
-  "totalIncomes": 0.00,
-  "totalExpenses": 25.00
-}
-```
+* **Respuesta (`200 OK`)**
 
-### 10.4. Cerrar Turno de Caja (Arqueo Final)
+### 11.3. Cerrar Turno de Caja (Arqueo Final)
 * **Método:** `POST`
 * **Ruta:** `/api/v1/cash/shifts/{shiftId}/close`
+* **Roles:** `CAJERO`, `ADMINISTRADOR`, `EMPRESA`
+* **Headers:** `X-Branch-Id: 1`
+* **Body:** `{ "countedCash": 575.00, "notes": "Cierre conforme" }`
+* **Respuesta (`200 OK`):** Retorna `CashShiftResponse` con cálculo de cuadre.
+
+### 11.4. Reporte Fiscal y Operativo de Corte Z
+* **Método:** `GET`
+* **Ruta:** `/api/v1/cash/shifts/{shiftId}/z-cut`
+* **Roles:** `CAJERO`, `ADMINISTRADOR`, `EMPRESA`
+* **Headers:** `X-Branch-Id: 1`
+* **Respuesta (`200 OK`):** Retorna `ZCutReportResponse` con total de ventas, recaudación desglosada por método de pago y comprobantes emitidos.
+
+---
+
+## 12. Módulo 10: Gastos Operativos
+
+Base URL: `/api/v1/expenses`
+
+Permite registrar compras menores de emergencia, insumos de cocina, compras en efectivo y egresos diarios asociados a la caja chica de la sucursal.
+
+### 12.1. Listar Gastos Operativos
+* **Método:** `GET`
+* **Ruta:** `/api/v1/expenses?from=2026-10-01&to=2026-10-14&branchId=1`
+* **Roles:** `CAJERO`, `ADMINISTRADOR`, `EMPRESA`
+* **Headers:** `X-Branch-Id: 1` (opcional si se pasa `branchId`)
+* **Respuesta (`200 OK`):**
+```json
+[
+  {
+    "id": 12,
+    "branchId": 1,
+    "shiftId": 45,
+    "amount": 35.50,
+    "reason": "Compra de perejil y limones en mercado local",
+    "registeredByUserId": "e98e2197-28d8-4b71-97b7-785bc03cbbf6",
+    "registeredByName": "Carlos Mendoza",
+    "createdAt": "2026-10-14T11:20:00Z"
+  }
+]
+```
+
+### 12.2. Registrar Nuevo Gasto
+Si no se especifica `shiftId`, el backend lo asocia automáticamente al turno de caja abierto del cajero o de la sucursal.
+* **Método:** `POST`
+* **Ruta:** `/api/v1/expenses`
 * **Roles:** `CAJERO`, `ADMINISTRADOR`, `EMPRESA`
 * **Headers:** `X-Branch-Id: 1`
 * **Body:**
 ```json
 {
-  "countedCash": 575.00,
-  "notes": "Cierre de turno conforme sin novedades"
+  "shiftId": null,
+  "amount": 25.00,
+  "reason": "Compra de hielo para barra"
 }
 ```
-* **Respuesta (`200 OK`):** Retorna `CashShiftResponse` con el cálculo automático de `expectedCashAmount` y `cashDifference` (cuadre, faltante o sobrante).
+* **Respuesta (`201 Created`):** Header `Location: /api/v1/expenses/{id}`.
 
-### 10.5. Reporte Fiscal y Operativo de Corte Z
-Genera el balance completo del turno para auditoría o visualización en pantalla.
+### 12.3. Eliminar / Anular Gasto
+* **Método:** `DELETE`
+* **Ruta:** `/api/v1/expenses/{id}`
+* **Roles:** `ADMINISTRADOR`, `EMPRESA`
+* **Headers:** `X-Branch-Id: 1`
+* **Regla:** Solo permitido si el turno de caja correspondiente aún se encuentra abierto (`OPEN`).
+* **Respuesta (`204 No Content`)**
+
+---
+
+## 13. Módulo 11: Reportes Agregados
+
+Base URL: `/api/v1/reports`
+
+Módulo analítico para gerencia y directivos. Permite consolidar ventas por rango de fechas (día, semana, mes) y ranking de platos más vendidos.
+
+### 13.1. Resumen Consolidado de Ventas (Sales Summary)
 * **Método:** `GET`
-* **Ruta:** `/api/v1/cash/shifts/{shiftId}/z-cut`
-* **Roles:** `CAJERO`, `ADMINISTRADOR`, `EMPRESA`
+* **Ruta:** `/api/v1/reports/sales-summary?from=2026-10-01T00:00:00Z&to=2026-10-14T23:59:59Z&branchId=1`
+* **Roles:** `ADMINISTRADOR`, `EMPRESA`
+* **Headers:** `X-Branch-Id: 1` (si no se envía y el usuario es `EMPRESA`, consolida a nivel de franquicia completa).
+* **Respuesta (`200 OK`):**
+```json
+{
+  "branchId": 1,
+  "from": "2026-10-01T00:00:00Z",
+  "to": "2026-10-14T23:59:59Z",
+  "totalSales": 48520.00,
+  "netAmount": 41118.64,
+  "taxAmount": 7401.36,
+  "invoiceCount": 940,
+  "salesByPaymentMethod": {
+    "EFECTIVO": 18200.00,
+    "YAPE": 15400.00,
+    "TARJETA": 12920.00,
+    "PLIN": 2000.00
+  },
+  "salesByInvoiceType": {
+    "BOLETA": 38400.00,
+    "FACTURA": 8620.00,
+    "TICKET": 1500.00
+  }
+}
+```
+
+### 13.2. Ranking de Productos Más Vendidos (Product Sales Ranking)
+* **Método:** `GET`
+* **Ruta:** `/api/v1/reports/product-sales?from=2026-10-01T00:00:00Z&to=2026-10-14T23:59:59Z&limit=10&branchId=1`
+* **Roles:** `ADMINISTRADOR`, `EMPRESA`
 * **Headers:** `X-Branch-Id: 1`
 * **Respuesta (`200 OK`):**
 ```json
 {
-  "shiftId": 45,
   "branchId": 1,
-  "branchName": "Sucursal Central",
-  "cashRegisterName": "Caja Principal Salón",
-  "cashierName": "Carlos Mendoza",
-  "openedAt": "2026-10-14T08:00:00Z",
-  "closedAt": "2026-10-14T16:00:00Z",
-  "openingAmount": 150.00,
-  "totalSalesAmount": 1250.00,
-  "salesByPaymentMethod": {
-    "EFECTIVO": 450.00,
-    "YAPE": 350.00,
-    "TARJETA": 450.00
-  },
-  "totalCashFromSales": 450.00,
-  "totalChangeGiven": 0.00,
-  "netCashFromSales": 450.00,
-  "totalManualIncomes": 0.00,
-  "totalManualExpenses": 25.00,
-  "expectedCashInDrawer": 575.00,
-  "actualCountedCash": 575.00,
-  "cashDifference": 0.00,
-  "invoiceCounts": {
-    "BOLETA": 18,
-    "FACTURA": 4,
-    "TICKET": 2
-  },
-  "totalInvoicesIssued": 24,
-  "notes": "Cierre de turno conforme"
+  "from": "2026-10-01T00:00:00Z",
+  "to": "2026-10-14T23:59:59Z",
+  "items": [
+    {
+      "skuId": 1,
+      "skuCode": "LOMO-PERS-01",
+      "productName": "Lomo Saltado Clásico",
+      "presentationName": "Porción Personal",
+      "quantitySold": 284,
+      "totalRevenue": 14768.00
+    },
+    {
+      "skuId": 5,
+      "skuCode": "CHICHA-LIT-01",
+      "productName": "Chicha Morada de la Casa",
+      "presentationName": "Jarra 1L",
+      "quantitySold": 310,
+      "totalRevenue": 6200.00
+    }
+  ]
 }
 ```
 
 ---
 
-## 11. Módulo 9: Impresoras Térmicas y Hardware POS
+## 14. Módulo 12: Impresoras Térmicas y Hardware POS
 
 Base URL: `/api/v1/printers`
 
-### 11.1. Registrar Dispositivo de Impresión
+### 14.1. Registrar Dispositivo de Impresión
 * **Método:** `POST`
 * **Ruta:** `/api/v1/printers`
 * **Roles:** `ADMINISTRADOR`, `EMPRESA`
@@ -753,198 +1073,94 @@ Base URL: `/api/v1/printers`
   "name": "Impresora Cocina Caliente",
   "ipAddress": "192.168.1.200",
   "port": 9100,
-  "connectionType": "TCP",
-  "terminalCode": "COCINA-01"
+  "paperWidthMm": 80,
+  "locationDescription": "Estación de fogones y woks"
 }
 ```
 * **Respuesta (`201 Created`):** Header `Location: /api/v1/printers/{id}`.
 
-### 11.2. Configurar Ruta de Impresión
-Vincula un tipo de documento y/o área de producción con una impresora específica.
+### 14.2. Listar Impresoras
+* **Método:** `GET`
+* **Ruta:** `/api/v1/printers`
+* **Headers:** `X-Branch-Id: 1`
+* **Respuesta (`200 OK`)**
+
+### 14.3. Configurar Ruta de Producción
+Vincula un área de producción (`COCINA`, `BARRA`, `HORNO`, `CAJA`) con la impresora física encargada de recibir las comandas.
 * **Método:** `POST`
-* **Ruta:** `/api/v1/printers/{id}/routes`
+* **Ruta:** `/api/v1/printers/routes`
 * **Roles:** `ADMINISTRADOR`, `EMPRESA`
 * **Headers:** `X-Branch-Id: 1`
-* **Body:**
-```json
-{
-  "documentType": "KITCHEN_ORDER",
-  "productionArea": "COCINA"
-}
-```
-> **Valores posibles de `documentType`:** `KITCHEN_ORDER`, `CASHIER_RECEIPT`, `PRE_CHECK`, `Z_CUT`.
+* **Body:** `{ "printerDeviceId": 1, "productionArea": "COCINA" }`
+* **Respuesta (`200 OK`)**
 
-### 11.3. Reimprimir Comanda de Cocina
+### 14.4. Reintentar Trabajo de Impresión desde Dead Letter Queue (DLQ)
+Si una impresora se quedó sin papel o sufrió un corte de energía, el trabajo se retiene en DLQ. El operador puede reintentarlo una vez subsanado el problema físico.
 * **Método:** `POST`
-* **Ruta:** `/api/v1/printers/kitchen/reprint`
-* **Roles:** `COCINERO`, `CAJERO`, `ADMINISTRADOR`, `EMPRESA`
+* **Ruta:** `/api/v1/printers/jobs/retry`
+* **Roles:** `ADMINISTRADOR`, `EMPRESA`, `CAJERO`
 * **Headers:** `X-Branch-Id: 1`
-* **Body:**
-```json
-{
-  "orderId": 1050,
-  "productionArea": "COCINA",
-  "targetPrinterId": null
-}
-```
-* **Respuesta (`202 Accepted`):**
-```json
-{
-  "jobIds": [88],
-  "reprinted": true
-}
-```
-
-### 11.4. Reimprimir Comprobante de Caja
-* **Método:** `POST`
-* **Ruta:** `/api/v1/printers/receipts/reprint`
-* **Roles:** `CAJERO`, `ADMINISTRADOR`, `EMPRESA`
-* **Headers:** `X-Branch-Id: 1`
-* **Body:**
-```json
-{
-  "orderId": 1050,
-  "terminalCode": "CAJA-01",
-  "targetPrinterId": null,
-  "reason": "Papel atascado en el primer intento"
-}
-```
+* **Body:** `{ "printJobId": 4501, "overridePrinterId": null }`
 * **Respuesta (`202 Accepted`)**
 
 ---
 
-## 12. Módulo 10: Eventos en Tiempo Real (WebSockets / STOMP)
+## 15. Módulo 13: Eventos en Tiempo Real (WebSockets / STOMP)
 
-La API expone un broker STOMP integrado para sincronizar interfaces en tiempo real sin polling.
+* **Endpoint de Conexión:** `/ws`
+* **Transporte:** SockJS + STOMP
+* **Autenticación en Handshake:** Header STOMP `Authorization: Bearer <token_jwt>`
 
-### Configuración de Conexión en el Front-End
-* **URL del Endpoint:** `wss://<dominio>/ws` (o `https://<dominio>/ws` vía SockJS).
-* **Frame `CONNECT`:**
-```text
-CONNECT
-accept-version:1.2,1.1,1.0
-heart-beat:10000,10000
-Authorization:Bearer <JWT_TOKEN>
-```
+### Canales de Suscripción (Topics)
 
-### Tópicos de Suscripción Disponibles
-
-#### A. Cambios de Estado en el Mapa de Mesas
-* **Destino:** `/topic/branches/{branchId}/tables`
-* **Payload Recibido:**
-```json
-{
-  "branchId": 1,
-  "tableId": 501,
-  "state": "OCCUPIED",
-  "orderId": 1050
-}
-```
-
-#### B. Actualizaciones de Stock en Tiempo Real
-* **Destino:** `/topic/branches/{branchId}/stock`
-* **Payload Recibido:**
-```json
-{
-  "branchId": 1,
-  "skuId": 1,
-  "currentStock": 48,
-  "isAvailable": true
-}
-```
-
-#### C. Alertas de Fallo Físico en Impresoras Térmicas (DLQ)
-Emitido cuando una impresora térmica se desconecta, se queda sin papel o falla tras 3 reintentos.
-* **Destino:** `/topic/branches/{branchId}/printer-alerts`
-* **Payload Recibido:**
-```json
-{
-  "branchId": 1,
-  "jobId": 99,
-  "orderId": 1050,
-  "documentType": "KITCHEN_ORDER",
-  "printerIp": "192.168.1.200",
-  "printerPort": 9100,
-  "targetArea": "COCINA",
-  "errorMessage": "No se pudo imprimir tras múltiples reintentos.",
-  "actionRequired": "Verifique si la impresora tiene papel, está encendida o revise la conexión de red (IP: 192.168.1.200:9100)",
-  "failedAt": "2026-10-14T03:10:00Z"
-}
-```
+| Destino STOMP | Perfil de Destinatario | Contenido del Mensaje |
+| :--- | :--- | :--- |
+| `/topic/branches/{branchId}/tables` | Mozos y Cajeros | Actualización en vivo del estado de la mesa (`state: AVAILABLE`, `OCCUPIED`, `BILL_REQUESTED`). |
+| `/topic/branches/{branchId}/kitchen` | Pantallas KDS | Nuevas comandas creadas o adición de platos (`ticketId`, `orderId`, platos, comentarios). |
+| `/topic/branches/{branchId}/printer-alerts` | Pantalla de Caja | Alertas urgentes de hardware (impresora sin papel, desconectada o trabajo enviado a DLQ). |
 
 ---
 
-## 13. Manejo de Errores Estándar (RFC 7807 ProblemDetail)
+## 16. Manejo de Errores Estándar (RFC 7807 ProblemDetail)
 
-Todas las respuestas de error de la API devuelven una estructura uniforme `application/problem+json`:
+Todas las excepciones del backend devuelven el formato estándar RFC 7807 (`Content-Type: application/problem+json`).
 
-### Ejemplo 1: Error de Validación de Formulario (`400 Bad Request`)
+### Formato General
 ```json
 {
-  "type": "https://api.facilcomanda.com/errors/invalid-argument",
-  "title": "Error de Validación de Entrada",
+  "type": "https://api.facilcomanda.com/errors/{code}",
+  "title": "Breve descripción humana del tipo de error",
   "status": 400,
-  "detail": "Uno o más campos de la solicitud no cumplen con las validaciones requeridas.",
-  "instance": "/api/v1/orders",
+  "detail": "Explicación detallada de la causa del fallo",
+  "instance": "/api/v1/ruta-solicitada",
   "properties": {
-    "errorCode": "INVALID_ARGUMENT",
-    "timestamp": "2026-10-14T03:12:00Z",
-    "traceId": "a98b1c4d-6e7f-4123-890a-bcdef1234567",
-    "fieldErrors": {
-      "items": "No puede enviar una orden con lista de productos vacía",
-      "tableId": "El ID de la mesa es obligatorio"
-    }
-  }
-}
-```
-
-### Ejemplo 2: Conflicto de Concurrencia (`409 Conflict`)
-```json
-{
-  "type": "https://api.facilcomanda.com/errors/conflict",
-  "title": "Conflicto de Estado",
-  "status": 409,
-  "detail": "La mesa Mesa 101 ya está ocupada o no se encuentra disponible.",
-  "instance": "/api/v1/orders",
-  "properties": {
-    "errorCode": "CONFLICT",
-    "timestamp": "2026-10-14T03:12:05Z",
-    "traceId": "b12c3d4e-5f6a-4b7c-8d9e-0123456789ab"
-  }
-}
-```
-
-### Ejemplo 3: Límite de Rate Limiting Excedido (`429 Too Many Requests`)
-```json
-{
-  "type": "https://api.facilcomanda.com/errors/rate-limit-exceeded",
-  "title": "Límite de Consultas Excedido",
-  "status": 429,
-  "detail": "Has superado el límite de consultas permitidas por minuto (15 req/min). Inténtalo de nuevo en 45 segundos.",
-  "instance": "/api/v1/customers/lookup",
-  "properties": {
-    "errorCode": "RATE_LIMIT_EXCEEDED",
-    "retryAfterSeconds": 45,
-    "timestamp": "2026-10-14T03:12:10Z",
-    "traceId": "c34d5e6f-7a8b-4c9d-0e1f-23456789abcd"
+    "timestamp": "2026-10-14T03:12:00Z"
   }
 }
 ```
 
 ---
 
-## 🎯 Guía Rápida para el Agente IA de Front-End
+## 17. Guía Rápida para el Agente IA de Front-End
 
 Si vas a construir una aplicación cliente para este backend:
-1. **Para la App de Mozos (Tablet/Móvil):**
-   * Conéctate al WebSocket `/topic/branches/{branchId}/tables` para pintar el plano del restaurante con colores según `state`.
-   * Para tomar pedido: `POST /api/v1/orders` con `Idempotency-Key` único generado en el cliente.
+1. **Flujo de Inicio de Sesión:**
+   * Utiliza `POST /api/v1/auth/login` con `{ email, password }`. Almacena en memoria o storage seguro `access_token` y `refresh_token`.
+   * En cada petición HTTP incluye `Authorization: Bearer <access_token>` y `X-Branch-Id: <id>`.
+   * Cuando el token expire (recibas `401 Unauthorized`), llama a `POST /api/v1/auth/refresh`.
+2. **Para la App de Mozos (Tablet/Móvil):**
+   * Conéctate a `/topic/branches/{branchId}/tables` para pintar el plano del restaurante con colores según `state`.
+   * Para tomar pedido: `POST /api/v1/orders` con `Idempotency-Key` único.
    * Para pedir la cuenta: `POST /api/v1/orders/{id}/pre-check/print`.
-2. **Para la Pantalla de Cocina (KDS):**
+3. **Para la Pantalla de Cocina (KDS):**
    * Consume `GET /api/v1/kitchen/tickets` al iniciar.
    * Conéctate al WebSocket `/topic/branches/{branchId}/kitchen` para recibir nuevas comandas instantáneamente.
    * Permite tocar la pantalla para cambiar el estado con `PATCH /api/v1/kitchen/tickets/{id}/status` (`PREPARING` ➔ `READY`).
-3. **Para el Punto de Venta (POS Cajero):**
-   * Escucha `/topic/branches/{branchId}/printer-alerts` para mostrar un modal de alerta roja si la impresora térmica se atasca.
+4. **Para el Punto de Venta (POS Cajero):**
+   * Escucha `/topic/branches/{branchId}/printer-alerts` para mostrar modal de alerta roja si la impresora térmica se atasca.
    * Para cobrar: `POST /api/v1/invoices/pay` enviando los medios de pago desglosados y datos del cliente.
+   * Para gastos diarios: `POST /api/v1/expenses`.
    * Al final del día: Genera el arqueo con `POST /api/v1/cash/shifts/{shiftId}/close` y visualiza/imprime el `GET /api/v1/cash/shifts/{shiftId}/z-cut`.
+5. **Para el Portal Web de Administración / Franquicia:**
+   * Gestiona salones (`/api/v1/floors`), mesas (`/api/v1/tables`), categorías (`/api/v1/categories`), marcas (`/api/v1/catalog/brands`), productos (`/api/v1/catalog/products`) y personal (`/api/v1/users`).
+   * Visualiza gráficos de facturación con `GET /api/v1/reports/sales-summary` y `GET /api/v1/reports/product-sales`.
