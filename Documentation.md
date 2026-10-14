@@ -22,11 +22,12 @@
 10. [Módulo 8: Clientes y Facturación Electrónica (`/api/v1/customers`, `/api/v1/invoices`)](#10-módulo-8-clientes-y-facturación-electrónica)
 11. [Módulo 9: Cajas, Turnos y Corte Z (`/api/v1/cash`)](#11-módulo-9-cajas-turnos-y-corte-z)
 12. [Módulo 10: Gastos Operativos (`/api/v1/expenses`)](#12-módulo-10-gastos-operativos)
-13. [Módulo 11: Reportes Agregados (`/api/v1/reports`)](#11-módulo-11-reportes-agregados)
-14. [Módulo 12: Impresoras Térmicas y Hardware POS (`/api/v1/printers`)](#12-módulo-12-impresoras-térmicas-y-hardware-pos)
-15. [Módulo 13: Eventos en Tiempo Real (WebSockets / STOMP)](#13-módulo-13-eventos-en-tiempo-real-websockets--stomp)
-16. [Manejo de Errores Estándar (RFC 7807 ProblemDetail)](#14-manejo-de-errores-estándar-rfc-7807-problemdetail)
-17. [Guía Rápida para el Agente IA de Front-End](#15-guía-rápida-para-el-agente-ia-de-front-end)
+13. [Módulo 11: Reportes Agregados (`/api/v1/reports`)](#13-módulo-11-reportes-agregados)
+14. [Módulo 12: Impresoras Térmicas y Hardware POS (`/api/v1/printers`)](#14-módulo-12-impresoras-térmicas-y-hardware-pos)
+15. [Módulo 13: Eventos en Tiempo Real (WebSockets / STOMP)](#15-módulo-13-eventos-en-tiempo-real-websockets--stomp)
+16. [Manejo de Errores Estándar (RFC 7807 ProblemDetail)](#16-manejo-de-errores-estándar-rfc-7807-problemdetail)
+17. [Documentación Interactiva (OpenAPI 3.0 & Swagger UI)](#17-documentación-interactiva-openapi-30--swagger-ui)
+18. [Guía Rápida para el Agente IA de Front-End](#18-guía-rápida-para-el-agente-ia-de-front-end)
 
 ---
 
@@ -1302,6 +1303,25 @@ Todas las excepciones del backend devuelven el formato estándar RFC 7807 (`Cont
   }
 }
 ```
+
+### Catálogo de Tipos de Error Estandarizados
+
+| Código HTTP | URI de Tipo (`type`) | `title` | Propiedades Adicionales (`properties`) |
+| :---: | :--- | :--- | :--- |
+| `400` | `.../errors/validation-failed` | Validación de Datos Fallida | `invalidParameters`: mapa `{ campo: mensaje }` |
+| `400` | `.../errors/invalid-parameter-type` | Tipo de Parámetro Inválido | `parameterName`, `invalidValue` |
+| `400` | `.../errors/missing-header` | Encabezado HTTP Requerido Faltante | `headerName` (ej. `X-Branch-Id`) |
+| `400` | `.../errors/malformed-json` | Cuerpo de Solicitud Inválido | `timestamp` |
+| `400` | `.../errors/bad-request` | Solicitud Inválida | `timestamp` |
+| `401` | `.../errors/unauthorized` | Autenticación Fallida | `timestamp` |
+| `403` | `.../errors/forbidden` | Acceso Denegado | `timestamp` |
+| `404` | `.../errors/not-found` | Recurso No Encontrado | `timestamp` |
+| `409` | `.../errors/conflict` | Conflicto con Regla de Negocio / Operación Duplicada | `timestamp` |
+| `422` | `.../errors/insufficient-stock` | Stock Insuficiente | `timestamp` |
+| `429` | `.../errors/cooldown` | Cooldown de Reimpresión Activo | `secondsRemaining`: segundos a esperar |
+| `429` | `.../errors/rate-limit` | Límite de Consultas Excedido | `retryAfterSeconds`, `limitType` |
+| `502` | `.../errors/printer-offline` | Falla de Comunicación con Impresora | `timestamp` |
+| `500` | `.../errors/internal-error` | Error Interno del Servidor | `errorId`: UUID de rastreo para soporte |
 
 ---
 

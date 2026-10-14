@@ -51,7 +51,7 @@ docker compose ps
 # En Linux / macOS:
 ./mvnw spring-boot:run
 ```
-La API arrancará en el puerto **`8081`** y aplicará automáticamente las migraciones de base de datos Flyway (V1 a V14).
+La API arrancará en el puerto **`8081`** y aplicará automáticamente las migraciones de base de datos Flyway (V1 a V16).
 
 ---
 
@@ -128,12 +128,24 @@ Keycloak gestiona los usuarios, roles y emisión de tokens OAuth2 / OIDC:
 
 #### ¿Cómo obtener un Token JWT desde la terminal (cURL o Postman)?
 
+##### Opción A: A través de la API (Proxy de Autenticación - Recomendado)
+Evita exponer Keycloak directamente al navegador y resuelve problemas de CORS:
+```bash
+curl -X POST "http://localhost:8081/api/v1/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "cajero1@facilcomanda.com",
+    "password": "password123"
+  }'
+```
+
+##### Opción B: Directo a Keycloak (IAM OIDC)
 Invocando el endpoint de token de Keycloak:
 ```bash
 curl -X POST "http://localhost:8080/realms/fcp-realm/protocol/openid-connect/token" \
   -H "Content-Type: application/x-www-form-urlencoded" \
   -d "grant_type=password" \
-  -d "client_id=fcp-api-client" \
+  -d "client_id=fcp-api" \
   -d "username=cajero1@facilcomanda.com" \
   -d "password=password123"
 ```
@@ -142,9 +154,10 @@ curl -X POST "http://localhost:8080/realms/fcp-realm/protocol/openid-connect/tok
 ```json
 {
   "access_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "Bearer",
   "expires_in": 300,
-  "refresh_expires_in": 1800,
-  "token_type": "Bearer"
+  "refresh_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refresh_expires_in": 1800
 }
 ```
 Copia el valor de `access_token` para enviarlo en la cabecera `Authorization: Bearer <access_token>`.
