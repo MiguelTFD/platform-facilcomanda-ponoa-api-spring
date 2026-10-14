@@ -442,5 +442,85 @@ public class CashService implements CashShiftProvider {
         shift.notes(),
         movements);
   }
+
+  @Transactional
+  public Long recordExpense(
+      Long branchId, UUID userId, com.facilcomanda.ponoa.cash.payload.CreateExpenseRequest request) {
+    Long shiftId = request.shiftId();
+    if (shiftId == null) {
+      shiftId =
+          shiftRepository
+              .findByBranchIdAndCashierUserIdAndStatus(branchId, userId, CashShiftStatus.OPEN.name())
+              .or(
+                  () ->
+                      shiftRepository.findFirstByBranchIdAndStatusOrderByOpenedAtDesc(
+                          branchId, CashShiftStatus.OPEN.name()))
+              .map(CashShift::id)
+              .orElseThrow(
+                  () ->
+                      new IllegalStateException(
+                          "No hay un turno de caja abierto en la sucursal "
+                              + branchId
+                              + " para registrar el gasto. Abra una caja primero."));
+    }
+
+    return addCashMovement(
+        branchId,
+        shiftId,
+        userId,
+        new AddCashMovementRequest(CashMovementType.EXPENSE, request.amount(), request.reason()));
+  }
+
+  @Transactional(readOnly = true)
+  public List<com.facilcomanda.ponoa.cash.payload.ExpenseResponse> listExpenses(
+      Long branchId, OffsetDateTime from, OffsetDateTime to) {
+    OffsetDateTime effectiveFrom = from != null ? from : OffsetDateTime.now().minusDays(30);
+    OffsetDateTime effectiveTo = to != null ? to : OffsetDateTime.now();
+
+    return movementRepository.findExpenses(branchId, effectiveFrom, effectiveTo).stream()
+        .map(
+            v ->
+                new com.facilcomanda.ponoa.cash.payload.ExpenseResponse(
+                    v.id(),
+                    v.branchId(),
+                    v.shiftId(),
+                    v.amount(),
+                    v.reason(),
+                    v.registeredByUserId(),
+                    v.registeredByName(),
+                    v.createdAt()))
+        .toList();
+  }
+
+  @Transactional
+  public void deleteExpense(Long branchId, Long expenseId) {
+    CashMovement movement =
+        movementRepository
+            .findById(expenseId)
+            .orElseThrow(
+                () -> new ResourceNotFoundException("Gasto con ID " + expenseId + " no encontrado"));
+
+    if (!"EXPENSE".equalsIgnoreCase(movement.type())) {
+      throw new IllegalArgumentException(
+          "El movimiento con ID " + expenseId + " no es de tipo EXPENSE");
+    }
+
+    CashShift shift =
+        shiftRepository
+            .findByIdAndBranchId(movement.cashShiftId(), branchId)
+            .orElseThrow(
+                () ->
+                    new ResourceNotFoundException(
+                        "Turno de caja "
+                            + movement.cashShiftId()
+                            + " no encontrado en sucursal "
+                            + branchId));
+
+    if (!CashShiftStatus.OPEN.name().equalsIgnoreCase(shift.status())) {
+      throw new IllegalStateException("No se puede eliminar un gasto de un turno de caja cerrado.");
+    }
+
+    movementRepository.deleteById(expenseId);
+  }
 }
 

@@ -17,6 +17,8 @@ interface CashShiftRepository extends CrudRepository<CashShift, Long> {
 
   Optional<CashShift> findByIdAndBranchId(Long id, Long branchId);
 
+  Optional<CashShift> findFirstByBranchIdAndStatusOrderByOpenedAtDesc(Long branchId, String status);
+
   List<CashShift> findAllByBranchIdOrderByOpenedAtDesc(Long branchId);
 
   @Query(
