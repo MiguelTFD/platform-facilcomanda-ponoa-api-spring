@@ -1,6 +1,8 @@
 package com.facilcomanda.ponoa.sales.event;
 
 import com.facilcomanda.ponoa.sales.OrderPlacedEvent;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.scheduling.annotation.Async;
@@ -10,6 +12,8 @@ import org.springframework.transaction.event.TransactionalEventListener;
 
 @Component
 class OrderEmailListener {
+
+  private static final Logger log = LoggerFactory.getLogger(OrderEmailListener.class);
 
   private final JavaMailSender mailSender;
 
@@ -22,7 +26,7 @@ class OrderEmailListener {
   void handleOrderPlacedEvent(OrderPlacedEvent event) {
 
     SimpleMailMessage message = new SimpleMailMessage();
-    message.setFrom("no-reply@facilcomanda.com"); // SMTP parameter
+    message.setFrom("no-reply@facilcomanda.com");
     message.setTo(event.customerEmail(), "pedidos@facilcomanda.com");
     message.setSubject("Confirmacion de Orden #" + event.orderId() + " - FacilComanda Ponoa");
     message.setText(
@@ -32,9 +36,7 @@ class OrderEmailListener {
     try {
       mailSender.send(message);
     } catch (Exception e) {
-      // TODO: add error logs or/and a retry method
-      System.err.println(
-          "Fallo al enviar correo de orden " + event.orderId() + ": " + e.getMessage());
+      log.error("Failed to send order placement email for order {}: {}", event.orderId(), e.getMessage(), e);
     }
   }
 }

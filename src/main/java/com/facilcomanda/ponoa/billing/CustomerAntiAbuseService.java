@@ -205,6 +205,29 @@ public class CustomerAntiAbuseService {
     timestamps.addLast(now);
   }
 
+  @org.springframework.scheduling.annotation.Scheduled(fixedRate = 300_000)
+  public void evictExpiredEntries() {
+    Instant now = Instant.now();
+    Instant threshold = now.minus(Duration.ofSeconds(60));
+
+    cleanWindowMap(userWindows, threshold);
+    cleanWindowMap(branchWindows, threshold);
+    cleanWindowMap(ipWindows, threshold);
+
+    quarantineMap.entrySet().removeIf(entry -> now.isAfter(entry.getValue()));
+    negativeCache.entrySet().removeIf(entry -> now.isAfter(entry.getValue()));
+  }
+
+  private void cleanWindowMap(Map<String, ConcurrentLinkedDeque<Instant>> windowMap, Instant threshold) {
+    windowMap.entrySet().removeIf(entry -> {
+      ConcurrentLinkedDeque<Instant> deque = entry.getValue();
+      while (!deque.isEmpty() && deque.peekFirst().isBefore(threshold)) {
+        deque.pollFirst();
+      }
+      return deque.isEmpty();
+    });
+  }
+
   private <K, V> void ensureCapacity(Map<K, V> map) {
     if (map.size() >= MAX_ENTRIES) {
       map.clear(); // OOM prevention guard

@@ -166,6 +166,11 @@ public class CustomerLookupService {
     localCache.put(key, new CacheEntry(dto, Instant.now().plusSeconds(CACHE_TTL_SECONDS)));
   }
 
+  @org.springframework.scheduling.annotation.Scheduled(fixedRate = 300_000)
+  public void evictExpiredCacheEntries() {
+    localCache.entrySet().removeIf(entry -> entry.getValue().isExpired());
+  }
+
   private record CacheEntry(TaxCustomerDto dto, Instant expiry) {
     boolean isExpired() {
       return Instant.now().isAfter(expiry);
