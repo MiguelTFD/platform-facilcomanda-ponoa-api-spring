@@ -326,4 +326,176 @@ class OrderServiceTest {
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("No se pueden agregar items a una orden con estado PAID");
   }
+
+  @Test
+  @DisplayName("Should cancel order, revert inventory stock, release table, and publish OrderCancelledEvent")
+  void shouldCancelOrderSuccessfully() {
+    Long branchId = 2L;
+    Long orderId = 15L;
+    Long tableId = 8L;
+    UUID cancelledBy = UUID.randomUUID();
+    String reason = "Cliente tuvo una emergencia y se retiro";
+
+    CustomerOrder order =
+        new CustomerOrder(
+            orderId,
+            branchId,
+            UUID.randomUUID(),
+            "idemp-cancel",
+            tableId,
+            "DINE_IN",
+            "Mesa 4",
+            new BigDecimal("60.00"),
+            "PENDING",
+            Set.of(
+                new OrderItem(101L, 2, new BigDecimal("20.00")),
+                new OrderItem(102L, 1, new BigDecimal("20.00"))));
+
+    when(orderRepository.findByIdAndBranchId(orderId, branchId)).thenReturn(Optional.of(order));
+
+    orderService.cancelOrder(branchId, orderId, cancelledBy, reason);
+
+    verify(orderRepository).cancelOrder(orderId, branchId, cancelledBy, reason);
+    verify(stockService).addStock(branchId, 101L, 2);
+    verify(stockService).addStock(branchId, 102L, 1);
+    verify(restaurantTableProvider).updateTableState(tableId, branchId, TableState.AVAILABLE);
+
+    ArgumentCaptor<OrderCancelledEvent> eventCaptor = ArgumentCaptor.forClass(OrderCancelledEvent.class);
+    verify(eventPublisher).publishEvent(eventCaptor.capture());
+    OrderCancelledEvent event = eventCaptor.getValue();
+    assertThat(event.orderId()).isEqualTo(orderId);
+    assertThat(event.branchId()).isEqualTo(branchId);
+    assertThat(event.cancelledBy()).isEqualTo(cancelledBy);
+    assertThat(event.cancellationReason()).isEqualTo(reason);
+  }
+
+  @Test
+  @DisplayName("Should throw IllegalStateException when trying to cancel an already cancelled order")
+  void shouldThrowWhenCancellingAlreadyCancelledOrder() {
+    Long branchId = 2L;
+    Long orderId = 15L;
+    UUID cancelledBy = UUID.randomUUID();
+
+    CustomerOrder order =
+        new CustomerOrder(
+            orderId,
+            branchId,
+            UUID.randomUUID(),
+            "idemp-cancel",
+            null,
+            "DINE_IN",
+            null,
+            new BigDecimal("30.00"),
+            "CANCELLED",
+            Set.of());
+
+    when(orderRepository.findByIdAndBranchId(orderId, branchId)).thenReturn(Optional.of(order));
+
+    assertThatThrownBy(() -> orderService.cancelOrder(branchId, orderId, cancelledBy, "error"))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("already CANCELLED");
+  }
+
+  @Test
+  @DisplayName("Should throw IllegalStateException when trying to cancel a paid order")
+  void shouldThrowWhenCancellingPaidOrder() {
+    Long branchId = 2L;
+    Long orderId = 15L;
+    UUID cancelledBy = UUID.randomUUID();
+
+    CustomerOrder order =
+        new CustomerOrder(
+            orderId,
+            branchId,
+            UUID.randomUUID(),
+            "idemp-cancel",
+            null,
+            "DINE_IN",
+            null,
+            new BigDecimal("30.00"),
+            "PAID",
+            Set.of());
+
+    when(orderRepository.findByIdAndBranchId(orderId, branchId)).thenReturn(Optional.of(order));
+
+    assertThatThrownBy(() -> orderService.cancelOrder(branchId, orderId, cancelledBy, "error"))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("already PAID");
+  }
+
+  @Test
+  @DisplayName("Should calculate pre-check correctly with subtotal, tax 18%, and suggested tip 10%")
+  void shouldGetOrderPreCheckCorrectly() {
+    Long branchId = 3L;
+    Long orderId = 20L;
+    Long tableId = 5L;
+
+    CustomerOrder order =
+        new CustomerOrder(
+            orderId,
+            branchId,
+            UUID.randomUUID(),
+            "idemp-precheck",
+            tableId,
+            "DINE_IN",
+            "Mesa Principal",
+            new BigDecimal("118.00"),
+            "PENDING",
+            Set.of(new OrderItem(201L, 2, new BigDecimal("59.00"))));
+
+    when(orderRepository.findByIdAndBranchId(orderId, branchId)).thenReturn(Optional.of(order));
+    when(catalogPriceProvider.getSkuNames(Set.of(201L)))
+        .thenReturn(Map.of(201L, "Lomo Saltado Familiar"));
+
+    RestaurantTableView tableView =
+        new RestaurantTableView(tableId, branchId, 1L, "Mesa 5", "Terraza", TableState.OCCUPIED);
+    when(restaurantTableProvider.findTableByIdAndBranch(tableId, branchId))
+        .thenReturn(Optional.of(tableView));
+
+    PreCheckResponse preCheck = orderService.getOrderPreCheck(branchId, orderId);
+
+    assertThat(preCheck.orderId()).isEqualTo(orderId);
+    assertThat(preCheck.tableName()).isEqualTo("Mesa 5");
+    assertThat(preCheck.totalAmount()).isEqualByComparingTo("118.00");
+    // 118.00 / 1.18 = 100.00
+    assertThat(preCheck.subtotal()).isEqualByComparingTo("100.00");
+    // 118.00 - 100.00 = 18.00
+    assertThat(preCheck.taxAmount()).isEqualByComparingTo("18.00");
+    // 118.00 * 0.10 = 11.80
+    assertThat(preCheck.suggestedTip10()).isEqualByComparingTo("11.80");
+    assertThat(preCheck.items()).hasSize(1);
+    assertThat(preCheck.items().get(0).name()).isEqualTo("Lomo Saltado Familiar");
+  }
+
+  @Test
+  @DisplayName("Should publish PreCheckRequestedEvent when print is requested")
+  void shouldPublishPreCheckRequestedEvent() {
+    Long branchId = 3L;
+    Long orderId = 20L;
+    Long targetPrinterId = 99L;
+
+    CustomerOrder order =
+        new CustomerOrder(
+            orderId,
+            branchId,
+            UUID.randomUUID(),
+            "idemp-precheck",
+            null,
+            "TAKE_OUT",
+            null,
+            new BigDecimal("50.00"),
+            "PENDING",
+            Set.of());
+
+    when(orderRepository.findByIdAndBranchId(orderId, branchId)).thenReturn(Optional.of(order));
+
+    orderService.requestPreCheckPrint(branchId, orderId, targetPrinterId);
+
+    ArgumentCaptor<PreCheckRequestedEvent> captor = ArgumentCaptor.forClass(PreCheckRequestedEvent.class);
+    verify(eventPublisher).publishEvent(captor.capture());
+    PreCheckRequestedEvent event = captor.getValue();
+    assertThat(event.orderId()).isEqualTo(orderId);
+    assertThat(event.branchId()).isEqualTo(branchId);
+    assertThat(event.targetPrinterId()).isEqualTo(targetPrinterId);
+  }
 }

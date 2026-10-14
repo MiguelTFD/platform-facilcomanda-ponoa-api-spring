@@ -1,6 +1,7 @@
 package com.facilcomanda.ponoa.sales;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
@@ -11,6 +12,10 @@ public interface CustomerOrderProvider {
   Optional<OrderBillingSummary> getOrderBillingSummary(Long branchId, Long orderId);
 
   void markOrderAsPaid(Long branchId, Long orderId);
+
+  Optional<OrderPreCheckSummary> getOrderPreCheckSummary(Long branchId, Long orderId);
+
+  Optional<OrderPreCheckSummary> getActiveOrderPreCheckSummaryByTable(Long branchId, Long tableId);
 
   record OrderBillingSummary(
       Long orderId,
@@ -29,4 +34,25 @@ public interface CustomerOrderProvider {
       String orderType,
       String notes,
       Set<Long> skuIds) {}
+
+  record OrderPreCheckSummary(
+      Long orderId,
+      Long branchId,
+      Long tableId,
+      String tableName,
+      String orderType,
+      String waiterOrCashierEmail,
+      BigDecimal totalAmount,
+      BigDecimal subtotal,
+      BigDecimal taxAmount,
+      BigDecimal suggestedTip10,
+      List<PreCheckItem> items) {}
+
+  record PreCheckItem(
+      Long skuId,
+      String name,
+      Integer quantity,
+      BigDecimal unitPrice,
+      BigDecimal lineTotal,
+      String comments) {}
 }

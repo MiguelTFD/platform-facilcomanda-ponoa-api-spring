@@ -114,4 +114,38 @@ class EscPosTicketFormatterTest {
     assertThat(text).contains("Mesa: Mesa 4");
     assertThat(text).contains("Notas: Ronda 2");
   }
+
+  @Test
+  @DisplayName("Should format Pre-Check ticket with subtotal, tax 18%, total, 10% tip, and non-fiscal notice")
+  void shouldFormatPreCheckTicket() {
+    com.facilcomanda.ponoa.sales.CustomerOrderProvider.OrderPreCheckSummary summary =
+        new com.facilcomanda.ponoa.sales.CustomerOrderProvider.OrderPreCheckSummary(
+            100L,
+            1L,
+            5L,
+            "Mesa 5 (VIP)",
+            "DINE_IN",
+            "mozo@facilcomanda.com",
+            new java.math.BigDecimal("118.00"),
+            new java.math.BigDecimal("100.00"),
+            new java.math.BigDecimal("18.00"),
+            new java.math.BigDecimal("11.80"),
+            java.util.List.of(
+                new com.facilcomanda.ponoa.sales.CustomerOrderProvider.PreCheckItem(
+                    101L, "Ceviche Mixto", 2, new java.math.BigDecimal("59.00"), new java.math.BigDecimal("118.00"), null)));
+
+    byte[] bytes = formatter.formatPreCheckTicket(1L, 100L, summary, false);
+
+    String text = new String(bytes, StandardCharsets.US_ASCII);
+    assertThat(text).contains("*** PRE-CUENTA ***");
+    assertThat(text).contains("Mesa: Mesa 5 (VIP)");
+    assertThat(text).contains("Atendido: mozo@facilcomanda.com");
+    assertThat(text).contains("2x");
+    assertThat(text).contains("Ceviche Mixto");
+    assertThat(text).contains("SUBTOTAL:              S/  100.00");
+    assertThat(text).contains("I.G.V. (18%):          S/   18.00");
+    assertThat(text).contains("TOTAL:                 S/  118.00");
+    assertThat(text).contains("PROPINA SUG. (10%):     S/   11.80");
+    assertThat(text).contains("*** NO VALIDO COMO COMPROBANTE ***");
+  }
 }

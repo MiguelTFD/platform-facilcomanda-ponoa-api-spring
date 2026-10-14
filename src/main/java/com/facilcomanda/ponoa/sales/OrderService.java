@@ -7,6 +7,7 @@ import com.facilcomanda.ponoa.table.RestaurantTableProvider;
 import com.facilcomanda.ponoa.table.RestaurantTableView;
 import com.facilcomanda.ponoa.table.TableState;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -359,5 +360,208 @@ class OrderService implements CustomerOrderProvider {
     if (order.tableId() != null) {
       restaurantTableProvider.updateTableState(order.tableId(), branchId, TableState.AVAILABLE);
     }
+  }
+
+  @Transactional
+  public void cancelOrder(Long branchId, Long orderId, UUID cancelledBy, String reason) {
+    CustomerOrder order =
+        orderRepository
+            .findByIdAndBranchId(orderId, branchId)
+            .orElseThrow(
+                () ->
+                    new ResourceNotFoundException(
+                        "Order " + orderId + " not found in branch " + branchId));
+
+    if ("CANCELLED".equalsIgnoreCase(order.status())) {
+      throw new IllegalStateException("Order " + orderId + " is already CANCELLED.");
+    }
+
+    if ("PAID".equalsIgnoreCase(order.status())) {
+      throw new IllegalStateException(
+          "Order " + orderId + " is already PAID and cannot be directly cancelled. Issue a refund/credit note instead.");
+    }
+
+    orderRepository.cancelOrder(orderId, branchId, cancelledBy, reason);
+
+    // 1. Revert inventory (replenish stock for all order items)
+    if (order.items() != null) {
+      for (OrderItem item : order.items()) {
+        stockService.addStock(branchId, item.skuId(), item.quantity());
+      }
+    }
+
+    // 2. Release table if assigned
+    if (order.tableId() != null) {
+      restaurantTableProvider.updateTableState(order.tableId(), branchId, TableState.AVAILABLE);
+    }
+
+    // 3. Publish domain event to notify kitchen and other listeners
+    eventPublisher.publishEvent(
+        new OrderCancelledEvent(orderId, branchId, reason, cancelledBy));
+  }
+
+  @Transactional(readOnly = true)
+  public PreCheckResponse getOrderPreCheck(Long branchId, Long orderId) {
+    CustomerOrder order =
+        orderRepository
+            .findByIdAndBranchId(orderId, branchId)
+            .orElseThrow(
+                () ->
+                    new ResourceNotFoundException(
+                        "Order " + orderId + " not found in branch " + branchId));
+
+    return buildPreCheckResponse(order);
+  }
+
+  @Transactional(readOnly = true)
+  public PreCheckResponse getOrderPreCheckByTable(Long branchId, Long tableId) {
+    CustomerOrder order =
+        orderRepository
+            .findActiveOrderByTableId(branchId, tableId)
+            .orElseThrow(
+                () ->
+                    new ResourceNotFoundException(
+                        "No active pending order found for table " + tableId + " in branch " + branchId));
+
+    return buildPreCheckResponse(order);
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public Optional<CustomerOrderProvider.OrderPreCheckSummary> getOrderPreCheckSummary(
+      Long branchId, Long orderId) {
+    return orderRepository
+        .findByIdAndBranchId(orderId, branchId)
+        .map(this::buildOrderPreCheckSummary);
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public Optional<CustomerOrderProvider.OrderPreCheckSummary> getActiveOrderPreCheckSummaryByTable(
+      Long branchId, Long tableId) {
+    return orderRepository
+        .findActiveOrderByTableId(branchId, tableId)
+        .map(this::buildOrderPreCheckSummary);
+  }
+
+  @Transactional
+  public void requestPreCheckPrint(Long branchId, Long orderId, Long targetPrinterId) {
+    CustomerOrder order =
+        orderRepository
+            .findByIdAndBranchId(orderId, branchId)
+            .orElseThrow(
+                () ->
+                    new ResourceNotFoundException(
+                        "Order " + orderId + " not found in branch " + branchId));
+
+    eventPublisher.publishEvent(new PreCheckRequestedEvent(order.id(), branchId, targetPrinterId));
+  }
+
+  @Transactional
+  public void requestPreCheckPrintByTable(Long branchId, Long tableId, Long targetPrinterId) {
+    CustomerOrder order =
+        orderRepository
+            .findActiveOrderByTableId(branchId, tableId)
+            .orElseThrow(
+                () ->
+                    new ResourceNotFoundException(
+                        "No active pending order found for table " + tableId + " in branch " + branchId));
+
+    eventPublisher.publishEvent(new PreCheckRequestedEvent(order.id(), branchId, targetPrinterId));
+  }
+
+  private PreCheckResponse buildPreCheckResponse(CustomerOrder order) {
+    String tableName = resolveTableName(order.branchId(), order.tableId());
+
+    Set<Long> skuIds =
+        order.items() != null
+            ? order.items().stream().map(OrderItem::skuId).collect(Collectors.toSet())
+            : Set.of();
+
+    Map<Long, String> skuNames = catalogPriceProvider.getSkuNames(skuIds);
+
+    List<PreCheckResponse.PreCheckItemDto> items =
+        order.items() != null
+            ? order.items().stream()
+                .map(
+                    item ->
+                        new PreCheckResponse.PreCheckItemDto(
+                            item.skuId(),
+                            skuNames.getOrDefault(item.skuId(), "SKU-" + item.skuId()),
+                            item.quantity(),
+                            item.unitPriceAtPurchase(),
+                            item.subtotal(),
+                            item.comments()))
+                .toList()
+            : List.of();
+
+    BigDecimal total = order.totalAmount() != null ? order.totalAmount() : BigDecimal.ZERO;
+    BigDecimal subtotal = total.divide(BigDecimal.valueOf(1.18), 2, RoundingMode.HALF_UP);
+    BigDecimal taxAmount = total.subtract(subtotal);
+    BigDecimal suggestedTip10 = total.multiply(new BigDecimal("0.10")).setScale(2, RoundingMode.HALF_UP);
+
+    return new PreCheckResponse(
+        order.id(),
+        order.branchId(),
+        order.tableId(),
+        tableName,
+        order.orderType(),
+        subtotal,
+        taxAmount,
+        total,
+        suggestedTip10,
+        items);
+  }
+
+  private CustomerOrderProvider.OrderPreCheckSummary buildOrderPreCheckSummary(CustomerOrder order) {
+    String tableName = resolveTableName(order.branchId(), order.tableId());
+
+    Set<Long> skuIds =
+        order.items() != null
+            ? order.items().stream().map(OrderItem::skuId).collect(Collectors.toSet())
+            : Set.of();
+
+    Map<Long, String> skuNames = catalogPriceProvider.getSkuNames(skuIds);
+
+    List<CustomerOrderProvider.PreCheckItem> items =
+        order.items() != null
+            ? order.items().stream()
+                .map(
+                    item ->
+                        new CustomerOrderProvider.PreCheckItem(
+                            item.skuId(),
+                            skuNames.getOrDefault(item.skuId(), "SKU-" + item.skuId()),
+                            item.quantity(),
+                            item.unitPriceAtPurchase(),
+                            item.subtotal(),
+                            item.comments()))
+                .toList()
+            : List.of();
+
+    BigDecimal total = order.totalAmount() != null ? order.totalAmount() : BigDecimal.ZERO;
+    BigDecimal subtotal = total.divide(BigDecimal.valueOf(1.18), 2, RoundingMode.HALF_UP);
+    BigDecimal taxAmount = total.subtract(subtotal);
+    BigDecimal suggestedTip10 = total.multiply(new BigDecimal("0.10")).setScale(2, RoundingMode.HALF_UP);
+
+    return new CustomerOrderProvider.OrderPreCheckSummary(
+        order.id(),
+        order.branchId(),
+        order.tableId(),
+        tableName,
+        order.orderType(),
+        null,
+        total,
+        subtotal,
+        taxAmount,
+        suggestedTip10,
+        items);
+  }
+
+  private String resolveTableName(Long branchId, Long tableId) {
+    if (tableId == null) return null;
+    return restaurantTableProvider
+        .findTableByIdAndBranch(tableId, branchId)
+        .map(RestaurantTableView::tableName)
+        .orElse(null);
   }
 }

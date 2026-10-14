@@ -548,4 +548,120 @@ class PrintJobServiceTest {
     verify(printerRouteRepository, never())
         .findMatchingRoutes(branchId, "KITCHEN_ORDER", "COCINA");
   }
+
+  @Test
+  @DisplayName("Should request pre-check print, route to pre-check printer and publish message")
+  void shouldPrintPreCheckSuccessfully() {
+    Long branchId = 1L;
+    Long orderId = 30L;
+
+    CustomerOrderProvider.OrderPreCheckSummary summary =
+        new CustomerOrderProvider.OrderPreCheckSummary(
+            orderId,
+            branchId,
+            4L,
+            "Mesa 4",
+            "DINE_IN",
+            "cajero@restaurant.com",
+            new java.math.BigDecimal("118.00"),
+            new java.math.BigDecimal("100.00"),
+            new java.math.BigDecimal("18.00"),
+            new java.math.BigDecimal("11.80"),
+            List.of());
+
+    when(customerOrderProvider.getOrderPreCheckSummary(branchId, orderId))
+        .thenReturn(Optional.of(summary));
+    when(printJobRepository.findLatestJob(branchId, orderId, "PRE_CHECK"))
+        .thenReturn(Optional.empty());
+
+    PrinterDevice preCheckPrinter =
+        new PrinterDevice(105L, branchId, "Caja Principal", "192.168.1.55", 9100, "TCP", null, true, null, null);
+    PrinterRoute route =
+        new PrinterRoute(10L, branchId, 105L, PrintDocumentType.PRE_CHECK, null, null);
+
+    when(printerRouteRepository.findAllByBranchIdAndDocumentType(branchId, PrintDocumentType.PRE_CHECK))
+        .thenReturn(List.of(route));
+    when(printerDeviceRepository.findByIdAndBranchId(105L, branchId))
+        .thenReturn(Optional.of(preCheckPrinter));
+
+    when(printJobRepository.save(any(PrintJob.class)))
+        .thenAnswer(inv -> {
+          PrintJob arg = inv.getArgument(0);
+          return new PrintJob(
+              888L,
+              arg.branchId(),
+              arg.printerId(),
+              arg.orderId(),
+              arg.documentType(),
+              arg.idempotencyKey(),
+              arg.status(),
+              arg.errorMessage(),
+              arg.retryCount(),
+              null,
+              null);
+        });
+
+    Long jobId = printJobService.requestPreCheckPrint(branchId, orderId, null);
+
+    assertThat(jobId).isEqualTo(888L);
+
+    ArgumentCaptor<PrintJobMessage> captor = ArgumentCaptor.forClass(PrintJobMessage.class);
+    verify(rabbitTemplate)
+        .convertAndSend(
+            eq(PrintingQueueConfig.PRINTING_EXCHANGE),
+            eq("printing.branch.1"),
+            captor.capture());
+
+    PrintJobMessage sent = captor.getValue();
+    assertThat(sent.jobId()).isEqualTo(888L);
+    assertThat(sent.documentType()).isEqualTo(PrintDocumentType.PRE_CHECK);
+    assertThat(sent.printerId()).isEqualTo(105L);
+    assertThat(sent.tableName()).isEqualTo("Mesa 4");
+    assertThat(sent.isReprint()).isFalse();
+  }
+
+  @Test
+  @DisplayName("Should enforce reprint cooldown if pre-check was already printed within 60s")
+  void shouldEnforceCooldownOnPreCheckReprint() {
+    Long branchId = 1L;
+    Long orderId = 30L;
+
+    CustomerOrderProvider.OrderPreCheckSummary summary =
+        new CustomerOrderProvider.OrderPreCheckSummary(
+            orderId,
+            branchId,
+            4L,
+            "Mesa 4",
+            "DINE_IN",
+            "cajero@restaurant.com",
+            new java.math.BigDecimal("118.00"),
+            new java.math.BigDecimal("100.00"),
+            new java.math.BigDecimal("18.00"),
+            new java.math.BigDecimal("11.80"),
+            List.of());
+
+    when(customerOrderProvider.getOrderPreCheckSummary(branchId, orderId))
+        .thenReturn(Optional.of(summary));
+
+    PrintJob recentJob =
+        new PrintJob(
+            888L,
+            branchId,
+            105L,
+            orderId,
+            PrintDocumentType.PRE_CHECK,
+            "key",
+            PrintJobStatus.COMPLETED,
+            null,
+            0,
+            OffsetDateTime.now().minusSeconds(10),
+            null);
+
+    when(printJobRepository.findLatestJob(branchId, orderId, "PRE_CHECK"))
+        .thenReturn(Optional.of(recentJob));
+
+    assertThatThrownBy(() -> printJobService.requestPreCheckPrint(branchId, orderId, null))
+        .isInstanceOf(PrintCooldownException.class)
+        .hasMessageContaining("reimpresion");
+  }
 }

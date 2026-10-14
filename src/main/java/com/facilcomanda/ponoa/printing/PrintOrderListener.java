@@ -39,4 +39,10 @@ class PrintOrderListener {
         event.orderType(),
         event.additionNotes());
   }
+
+  @Async
+  @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+  public void onPreCheckRequested(com.facilcomanda.ponoa.sales.PreCheckRequestedEvent event) {
+    printJobService.requestPreCheckPrint(event.branchId(), event.orderId(), event.targetPrinterId());
+  }
 }

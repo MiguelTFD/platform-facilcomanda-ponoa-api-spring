@@ -730,5 +730,129 @@ class PrintJobService {
 
     return job.id();
   }
+
+  @Transactional
+  public Long requestPreCheckPrint(Long branchId, Long orderId, Long targetPrinterId) {
+    CustomerOrderProvider.OrderPreCheckSummary summary =
+        customerOrderProvider
+            .getOrderPreCheckSummary(branchId, orderId)
+            .orElseThrow(
+                () ->
+                    new ResourceNotFoundException(
+                        "Order " + orderId + " not found in branch " + branchId));
+
+    boolean isReprint =
+        printJobRepository
+            .findLatestJob(branchId, orderId, PrintDocumentType.PRE_CHECK.name())
+            .isPresent();
+
+    if (isReprint) {
+      validateReprintCooldown(branchId, orderId, PrintDocumentType.PRE_CHECK);
+    }
+
+    PrinterDevice printer = null;
+
+    if (targetPrinterId != null) {
+      printer =
+          printerDeviceRepository
+              .findByIdAndBranchId(targetPrinterId, branchId)
+              .filter(p -> Boolean.TRUE.equals(p.isActive()))
+              .orElseThrow(
+                  () ->
+                      new ResourceNotFoundException(
+                          "Printer " + targetPrinterId + " not found or inactive in branch " + branchId));
+    }
+
+    if (printer == null) {
+      List<PrinterRoute> routes =
+          printerRouteRepository.findAllByBranchIdAndDocumentType(
+              branchId, PrintDocumentType.PRE_CHECK);
+      for (PrinterRoute route : routes) {
+        printer =
+            printerDeviceRepository
+                .findByIdAndBranchId(route.printerId(), branchId)
+                .filter(p -> Boolean.TRUE.equals(p.isActive()))
+                .orElse(null);
+        if (printer != null) {
+          break;
+        }
+      }
+    }
+
+    if (printer == null) {
+      List<PrinterRoute> routes =
+          printerRouteRepository.findAllByBranchIdAndDocumentType(
+              branchId, PrintDocumentType.CUSTOMER_RECEIPT);
+      for (PrinterRoute route : routes) {
+        printer =
+            printerDeviceRepository
+                .findByIdAndBranchId(route.printerId(), branchId)
+                .filter(p -> Boolean.TRUE.equals(p.isActive()))
+                .orElse(null);
+        if (printer != null) {
+          break;
+        }
+      }
+    }
+
+    if (printer == null) {
+      printer =
+          printerDeviceRepository.findAllByBranchId(branchId).stream()
+              .filter(p -> Boolean.TRUE.equals(p.isActive()))
+              .findFirst()
+              .orElse(null);
+    }
+
+    if (printer == null) {
+      throw new ResourceNotFoundException(
+          "No active printer found for pre-check printing in branch " + branchId);
+    }
+
+    String idempotencyKey =
+        (isReprint ? "REPRINT-" : "")
+            + "PRECHECK-ORDER-"
+            + orderId
+            + "-PRINTER-"
+            + printer.id()
+            + "-TS-"
+            + System.currentTimeMillis();
+
+    PrintJob job =
+        new PrintJob(
+            null,
+            branchId,
+            printer.id(),
+            orderId,
+            PrintDocumentType.PRE_CHECK,
+            idempotencyKey,
+            PrintJobStatus.PENDING,
+            null,
+            0,
+            null,
+            null);
+
+    PrintJob savedJob = printJobRepository.save(job);
+
+    PrintJobMessage message =
+        new PrintJobMessage(
+            savedJob.id(),
+            branchId,
+            printer.id(),
+            orderId,
+            PrintDocumentType.PRE_CHECK,
+            printer.ipAddress(),
+            printer.port(),
+            null,
+            summary.tableName(),
+            summary.orderType(),
+            null,
+            isReprint,
+            false);
+
+    String routingKey = "printing.branch." + branchId;
+    rabbitTemplate.convertAndSend(PrintingQueueConfig.PRINTING_EXCHANGE, routingKey, message);
+
+    return savedJob.id();
+  }
 }
 

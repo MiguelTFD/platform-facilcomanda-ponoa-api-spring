@@ -118,4 +118,32 @@ class KitchenTicketServiceTest {
     assertThat(tickets.get(0).status()).isEqualTo(KitchenTicketStatus.PENDING);
     assertThat(tickets.get(1).status()).isEqualTo(KitchenTicketStatus.IN_PREPARATION);
   }
+
+  @Test
+  @DisplayName("Should cancel tickets for order and broadcast cancellation event to kitchen screens")
+  void shouldCancelTicketsForOrderAndPublish() {
+    Long branchId = 1L;
+    Long orderId = 105L;
+    String reason = "Mesa cancelada";
+
+    KitchenTicket ticket =
+        new KitchenTicket(
+            50L,
+            branchId,
+            orderId,
+            KitchenTicketStatus.CANCELLED,
+            "[CANCELADA]: Mesa cancelada",
+            null,
+            null);
+
+    when(kitchenTicketRepository.findByOrderId(orderId)).thenReturn(Optional.of(ticket));
+
+    kitchenTicketService.cancelTicketsForOrder(branchId, orderId, reason);
+
+    verify(kitchenTicketRepository)
+        .cancelTicketsByOrder(branchId, orderId, "[CANCELADA]: Mesa cancelada");
+    verify(kitchenScreenPublisher).publishTicketUpdate(eq(branchId), any(KitchenTicketResponse.class));
+    verify(kitchenScreenPublisher)
+        .publishOrderStatusNotification(branchId, orderId, KitchenTicketStatus.CANCELLED, "[CANCELADA]: Mesa cancelada");
+  }
 }

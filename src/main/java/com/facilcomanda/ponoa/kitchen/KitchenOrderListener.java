@@ -41,4 +41,11 @@ class KitchenOrderListener {
     kitchenTicketService.appendAdditionToTicket(
         event.branchId(), event.orderId(), event.tableName(), event.additionNotes());
   }
+
+  @Async
+  @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+  public void onOrderCancelled(com.facilcomanda.ponoa.sales.OrderCancelledEvent event) {
+    kitchenTicketService.cancelTicketsForOrder(
+        event.branchId(), event.orderId(), event.cancellationReason());
+  }
 }

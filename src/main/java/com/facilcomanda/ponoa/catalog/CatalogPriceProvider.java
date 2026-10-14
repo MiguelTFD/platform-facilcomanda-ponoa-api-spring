@@ -17,4 +17,9 @@ public interface CatalogPriceProvider {
    * Defaults to 'COCINA' if not explicitly configured.
    */
   Map<Long, String> getProductionAreasForSkus(Set<Long> skuIds);
+
+  /**
+   * Returns presentation names for the requested SKUs.
+   */
+  Map<Long, String> getSkuNames(Set<Long> skuIds);
 }

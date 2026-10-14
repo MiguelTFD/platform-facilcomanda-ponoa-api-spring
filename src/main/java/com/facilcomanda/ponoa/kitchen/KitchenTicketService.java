@@ -125,6 +125,21 @@ class KitchenTicketService {
             });
   }
 
+  @Transactional
+  public void cancelTicketsForOrder(Long branchId, Long orderId, String reason) {
+    String cancelNote = "[CANCELADA]: " + (reason != null ? reason : "Orden cancelada");
+    kitchenTicketRepository.cancelTicketsByOrder(branchId, orderId, cancelNote);
+    kitchenTicketRepository
+        .findByOrderId(orderId)
+        .ifPresent(
+            ticket -> {
+              KitchenTicketResponse response = toResponse(ticket);
+              kitchenScreenPublisher.publishTicketUpdate(branchId, response);
+              kitchenScreenPublisher.publishOrderStatusNotification(
+                  branchId, ticket.orderId(), KitchenTicketStatus.CANCELLED, cancelNote);
+            });
+  }
+
   private KitchenTicketResponse toResponse(KitchenTicket ticket) {
     return new KitchenTicketResponse(
         ticket.id(),

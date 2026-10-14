@@ -83,4 +83,23 @@ class BranchProductService implements CatalogPriceProvider {
 
     return areaMap;
   }
+
+  @Override
+  @Transactional(readOnly = true)
+  public Map<Long, String> getSkuNames(Set<Long> skuIds) {
+    if (skuIds == null || skuIds.isEmpty()) {
+      return Map.of();
+    }
+
+    List<SkuNameView> views = branchProductRepository.findPresentationNamesBySkuIds(skuIds);
+
+    Map<Long, String> nameMap = new HashMap<>();
+    for (SkuNameView view : views) {
+      if (view.presentationName() != null && !view.presentationName().isBlank()) {
+        nameMap.put(view.skuId(), view.presentationName());
+      }
+    }
+
+    return nameMap;
+  }
 }

@@ -82,4 +82,62 @@ class OrderController {
 
     return ResponseEntity.ok().build();
   }
+
+  @PostMapping("/{id}/cancel")
+  public ResponseEntity<Void> cancelOrder(
+      @PathVariable Long id,
+      @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
+      @AuthenticationPrincipal Jwt jwt,
+      @Valid @RequestBody CancelOrderRequest request) {
+
+    Long branchId = branchAccessValidator.resolveAndValidateBranchId(jwt, branchIdHeader);
+    UUID userId = UUID.fromString(jwt.getSubject());
+    orderService.cancelOrder(branchId, id, userId, request.reason());
+
+    return ResponseEntity.ok().build();
+  }
+
+  @GetMapping("/{id}/pre-check")
+  public ResponseEntity<PreCheckResponse> getPreCheck(
+      @PathVariable Long id,
+      @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
+      @AuthenticationPrincipal Jwt jwt) {
+
+    Long branchId = branchAccessValidator.resolveAndValidateBranchId(jwt, branchIdHeader);
+    return ResponseEntity.ok(orderService.getOrderPreCheck(branchId, id));
+  }
+
+  @GetMapping("/tables/{tableId}/pre-check")
+  public ResponseEntity<PreCheckResponse> getPreCheckByTable(
+      @PathVariable Long tableId,
+      @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
+      @AuthenticationPrincipal Jwt jwt) {
+
+    Long branchId = branchAccessValidator.resolveAndValidateBranchId(jwt, branchIdHeader);
+    return ResponseEntity.ok(orderService.getOrderPreCheckByTable(branchId, tableId));
+  }
+
+  @PostMapping("/{id}/pre-check/print")
+  public ResponseEntity<Void> printPreCheck(
+      @PathVariable Long id,
+      @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
+      @AuthenticationPrincipal Jwt jwt,
+      @org.springframework.web.bind.annotation.RequestParam(required = false) Long targetPrinterId) {
+
+    Long branchId = branchAccessValidator.resolveAndValidateBranchId(jwt, branchIdHeader);
+    orderService.requestPreCheckPrint(branchId, id, targetPrinterId);
+    return ResponseEntity.accepted().build();
+  }
+
+  @PostMapping("/tables/{tableId}/pre-check/print")
+  public ResponseEntity<Void> printPreCheckByTable(
+      @PathVariable Long tableId,
+      @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
+      @AuthenticationPrincipal Jwt jwt,
+      @org.springframework.web.bind.annotation.RequestParam(required = false) Long targetPrinterId) {
+
+    Long branchId = branchAccessValidator.resolveAndValidateBranchId(jwt, branchIdHeader);
+    orderService.requestPreCheckPrintByTable(branchId, tableId, targetPrinterId);
+    return ResponseEntity.accepted().build();
+  }
 }

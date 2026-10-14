@@ -175,4 +175,17 @@ class PrinterController {
 
     return ResponseEntity.accepted().body(Map.of("jobId", jobId, "status", "RETRYING"));
   }
+
+  @PostMapping("/pre-check")
+  public ResponseEntity<Map<String, Object>> printPreCheck(
+      @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
+      @AuthenticationPrincipal Jwt jwt,
+      @Valid @RequestBody com.facilcomanda.ponoa.printing.payload.PrintPreCheckRequest request) {
+
+    Long branchId = branchAccessValidator.resolveAndValidateBranchId(jwt, branchIdHeader);
+    Long jobId =
+        printJobService.requestPreCheckPrint(branchId, request.orderId(), request.targetPrinterId());
+
+    return ResponseEntity.accepted().body(Map.of("jobId", jobId, "printed", true));
+  }
 }

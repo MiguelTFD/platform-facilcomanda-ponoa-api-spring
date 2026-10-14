@@ -1,6 +1,7 @@
 package com.facilcomanda.ponoa.sales;
 
 import java.math.BigDecimal;
+import java.time.OffsetDateTime;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.data.annotation.Id;
@@ -19,7 +20,37 @@ public record CustomerOrder(
     String notes,
     BigDecimal totalAmount,
     String status,
+    @Column("cancelled_by") UUID cancelledBy,
+    @Column("cancellation_reason") String cancellationReason,
+    @Column("cancelled_at") OffsetDateTime cancelledAt,
     @MappedCollection(idColumn = "order_id") Set<OrderItem> items) {
+
+  public CustomerOrder(
+      Long id,
+      Long branchId,
+      UUID appUserId,
+      String idempotencyKey,
+      Long tableId,
+      String orderType,
+      String notes,
+      BigDecimal totalAmount,
+      String status,
+      Set<OrderItem> items) {
+    this(
+        id,
+        branchId,
+        appUserId,
+        idempotencyKey,
+        tableId,
+        orderType,
+        notes,
+        totalAmount,
+        status,
+        null,
+        null,
+        null,
+        items);
+  }
 
   public CustomerOrder(
       Long id,

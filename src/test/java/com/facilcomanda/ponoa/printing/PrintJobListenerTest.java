@@ -21,6 +21,7 @@ class PrintJobListenerTest {
   @Mock private PrintJobRepository printJobRepository;
   @Mock private EscPosTicketFormatter ticketFormatter;
   @Mock private EscPosTcpPrinterClient printerClient;
+  @Mock private com.facilcomanda.ponoa.sales.CustomerOrderProvider customerOrderProvider;
 
   @InjectMocks private PrintJobListener listener;
 
@@ -87,5 +88,43 @@ class PrintJobListenerTest {
 
     verify(printJobRepository)
         .updateJobStatus(eq(1L), eq(10L), eq(PrintJobStatus.FAILED.name()), any());
+  }
+
+  @Test
+  @DisplayName("Should process PRE_CHECK print job using formatPreCheckTicket")
+  void shouldProcessPreCheckJobSuccessfully() {
+    PrintJobMessage message =
+        new PrintJobMessage(
+            5L, 10L, 100L, 500L, PrintDocumentType.PRE_CHECK, "192.168.1.50", 9100);
+
+    com.facilcomanda.ponoa.sales.CustomerOrderProvider.OrderPreCheckSummary summary =
+        new com.facilcomanda.ponoa.sales.CustomerOrderProvider.OrderPreCheckSummary(
+            500L,
+            10L,
+            1L,
+            "Mesa 1",
+            "DINE_IN",
+            "user@test.com",
+            new java.math.BigDecimal("50.00"),
+            new java.math.BigDecimal("42.37"),
+            new java.math.BigDecimal("7.63"),
+            new java.math.BigDecimal("5.00"),
+            java.util.List.of());
+
+    when(customerOrderProvider.getOrderPreCheckSummary(10L, 500L))
+        .thenReturn(java.util.Optional.of(summary));
+
+    byte[] bytes = new byte[] {0x1B, 0x40};
+    when(ticketFormatter.formatPreCheckTicket(10L, 500L, summary, false))
+        .thenReturn(bytes);
+
+    listener.handlePrintJob(message);
+
+    verify(printJobRepository)
+        .updateJobStatus(5L, 10L, PrintJobStatus.PRINTING.name(), null);
+    verify(ticketFormatter).formatPreCheckTicket(10L, 500L, summary, false);
+    verify(printerClient).print("192.168.1.50", 9100, bytes);
+    verify(printJobRepository)
+        .updateJobStatus(5L, 10L, PrintJobStatus.COMPLETED.name(), null);
   }
 }
