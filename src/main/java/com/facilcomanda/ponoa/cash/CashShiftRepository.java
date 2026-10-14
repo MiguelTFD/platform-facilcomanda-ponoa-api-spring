@@ -42,4 +42,15 @@ interface CashShiftRepository extends CrudRepository<CashShift, Long> {
       "SELECT COALESCE(SUM(i.order_total), 0) FROM invoices i "
           + "WHERE i.cash_shift_id = :shiftId")
   BigDecimal sumOrderTotalsByShiftId(@Param("shiftId") Long shiftId);
+
+  @Query(
+      "SELECT i.invoice_type as type, COUNT(*) as count "
+          + "FROM invoices i "
+          + "WHERE i.cash_shift_id = :shiftId "
+          + "GROUP BY i.invoice_type")
+  List<InvoiceCountProjection> getInvoiceCountsByShiftId(@Param("shiftId") Long shiftId);
+
+  @Query("SELECT COUNT(*) FROM invoices WHERE cash_shift_id = :shiftId")
+  long countInvoicesByShiftId(@Param("shiftId") Long shiftId);
 }
+

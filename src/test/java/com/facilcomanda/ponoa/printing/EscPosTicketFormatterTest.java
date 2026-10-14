@@ -148,4 +148,55 @@ class EscPosTicketFormatterTest {
     assertThat(text).contains("PROPINA SUG. (10%):     S/   11.80");
     assertThat(text).contains("*** NO VALIDO COMO COMPROBANTE ***");
   }
+
+  @Test
+  @DisplayName("Should format ESC/POS Z-Cut daily/shift report ticket")
+  void shouldFormatZCutTicket() {
+    com.facilcomanda.ponoa.cash.payload.ZCutReportResponse zCut =
+        new com.facilcomanda.ponoa.cash.payload.ZCutReportResponse(
+            15L,
+            1L,
+            "Sede Central Miraflores",
+            2L,
+            "Caja Principal 01",
+            java.util.UUID.randomUUID(),
+            "Maria Cajera",
+            "CLOSED",
+            java.time.OffsetDateTime.now().minusHours(8),
+            java.time.OffsetDateTime.now(),
+            new java.math.BigDecimal("200.00"),
+            new java.math.BigDecimal("1580.50"),
+            java.util.Map.of(
+                "EFECTIVO", new java.math.BigDecimal("650.00"),
+                "YAPE", new java.math.BigDecimal("430.50"),
+                "TARJETA", new java.math.BigDecimal("500.00")),
+            new java.math.BigDecimal("50.00"),
+            new java.math.BigDecimal("30.00"),
+            new java.math.BigDecimal("650.00"),
+            new java.math.BigDecimal("20.00"),
+            new java.math.BigDecimal("630.00"),
+            new java.math.BigDecimal("850.00"),
+            new java.math.BigDecimal("850.00"),
+            java.math.BigDecimal.ZERO,
+            42L,
+            java.util.Map.of("BOLETA", 35L, "FACTURA", 7L),
+            "Cuadre perfecto de turno tarde",
+            java.util.List.of());
+
+    byte[] bytes = formatter.formatZCutTicket(zCut);
+
+    String text = new String(bytes, StandardCharsets.US_ASCII);
+    assertThat(text).contains("CORTE Z - CIERRE DE TURNO");
+    assertThat(text).contains("SUCURSAL: Sede Central Miraflores");
+    assertThat(text).contains("CAJA:     Caja Principal 01");
+    assertThat(text).contains("TURNO ID: #15 (CLOSED)");
+    assertThat(text).contains("CAJERO:   Maria Cajera");
+    assertThat(text).contains("FONDO INICIAL:     S/    200.00");
+    assertThat(text).contains("TOTAL VENTAS:      S/   1580.50");
+    assertThat(text).contains("TOTAL COMPROBANTES:          42");
+    assertThat(text).contains("EFECTIVO ESPERADO: S/    850.00");
+    assertThat(text).contains("EFECTIVO CONTADO:  S/    850.00");
+    assertThat(text).contains("FIRMA DE CONFORMIDAD");
+  }
 }
+

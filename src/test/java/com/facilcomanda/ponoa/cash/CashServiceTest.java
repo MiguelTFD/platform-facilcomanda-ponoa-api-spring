@@ -290,4 +290,62 @@ class CashServiceTest {
     assertThat(response.closingCashCounted()).isEqualByComparingTo("180.00");
     assertThat(response.cashDifference()).isEqualByComparingTo("-20.00"); // Faltante
   }
+
+  @Test
+  @DisplayName("Should generate Z-Cut report successfully with sales and invoice stats")
+  void shouldGenerateZCutReportSuccessfully() {
+    Long branchId = 1L;
+    Long shiftId = 50L;
+    UUID cashierId = UUID.randomUUID();
+
+    CashShift closedShift =
+        new CashShift(
+            shiftId,
+            branchId,
+            10L,
+            cashierId,
+            "Carlos Cajero",
+            "CLOSED",
+            new BigDecimal("200.00"),
+            OffsetDateTime.now().minusHours(8),
+            OffsetDateTime.now(),
+            new BigDecimal("500.00"),
+            new BigDecimal("500.00"),
+            BigDecimal.ZERO,
+            new BigDecimal("1200.00"),
+            "Cierre conforme",
+            OffsetDateTime.now().minusHours(8),
+            OffsetDateTime.now());
+
+    when(shiftRepository.findByIdAndBranchId(shiftId, branchId)).thenReturn(Optional.of(closedShift));
+    when(registerRepository.findByIdAndBranchId(10L, branchId))
+        .thenReturn(Optional.of(new CashRegister(10L, branchId, "Caja 1", null, true, null, null)));
+
+    when(shiftRepository.getPaymentsSummaryByShiftId(shiftId))
+        .thenReturn(
+            List.of(
+                new PaymentSummaryProjection("EFECTIVO", new BigDecimal("300.00")),
+                new PaymentSummaryProjection("YAPE", new BigDecimal("900.00"))));
+    when(shiftRepository.sumChangeGivenByShiftId(shiftId)).thenReturn(BigDecimal.ZERO);
+    when(shiftRepository.sumMovementsByType(shiftId, "INCOME")).thenReturn(BigDecimal.ZERO);
+    when(shiftRepository.sumMovementsByType(shiftId, "EXPENSE")).thenReturn(BigDecimal.ZERO);
+    when(shiftRepository.sumOrderTotalsByShiftId(shiftId)).thenReturn(new BigDecimal("1200.00"));
+
+    when(shiftRepository.countInvoicesByShiftId(shiftId)).thenReturn(15L);
+    when(shiftRepository.getInvoiceCountsByShiftId(shiftId))
+        .thenReturn(List.of(new InvoiceCountProjection("BOLETA", 12L), new InvoiceCountProjection("FACTURA", 3L)));
+    when(movementRepository.findAllByCashShiftIdOrderByCreatedAtDesc(shiftId)).thenReturn(Collections.emptyList());
+
+    com.facilcomanda.ponoa.cash.payload.ZCutReportResponse zCut =
+        cashService.getZCutReport(branchId, shiftId);
+
+    assertThat(zCut.shiftId()).isEqualTo(shiftId);
+    assertThat(zCut.cashRegisterName()).isEqualTo("Caja 1");
+    assertThat(zCut.totalSalesAmount()).isEqualByComparingTo("1200.00");
+    assertThat(zCut.totalInvoicesCount()).isEqualTo(15L);
+    assertThat(zCut.invoicesByType()).containsEntry("BOLETA", 12L).containsEntry("FACTURA", 3L);
+    assertThat(zCut.salesByPaymentMethod()).containsEntry("EFECTIVO", new BigDecimal("300.00"));
+    assertThat(zCut.salesByPaymentMethod()).containsEntry("YAPE", new BigDecimal("900.00"));
+  }
 }
+

@@ -1,11 +1,14 @@
 package com.facilcomanda.ponoa.printing;
 
+import com.facilcomanda.ponoa.cash.payload.ZCutReportResponse;
 import com.facilcomanda.ponoa.sales.CustomerOrderProvider;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Map;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -221,4 +224,83 @@ class EscPosTicketFormatter {
       throw new IllegalStateException("Failed to format ESC/POS pre-check ticket", e);
     }
   }
+
+  public byte[] formatZCutTicket(ZCutReportResponse zCut) {
+    try (ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+      out.write(INIT);
+      out.write(ALIGN_CENTER);
+      out.write(BOLD_ON);
+      out.write(DOUBLE_SIZE);
+      out.write("FACILCOMANDA\n".getBytes(StandardCharsets.US_ASCII));
+      out.write(NORMAL_SIZE);
+      out.write("CORTE Z - CIERRE DE TURNO\n".getBytes(StandardCharsets.US_ASCII));
+      out.write(BOLD_OFF);
+      out.write("================================\n".getBytes(StandardCharsets.US_ASCII));
+      out.write(ALIGN_LEFT);
+
+      out.write(String.format("SUCURSAL: %s\n", zCut.branchName()).getBytes(StandardCharsets.US_ASCII));
+      out.write(String.format("CAJA:     %s\n", zCut.cashRegisterName()).getBytes(StandardCharsets.US_ASCII));
+      out.write(String.format("TURNO ID: #%d (%s)\n", zCut.shiftId(), zCut.status()).getBytes(StandardCharsets.US_ASCII));
+      out.write(String.format("CAJERO:   %s\n", zCut.cashierName()).getBytes(StandardCharsets.US_ASCII));
+      if (zCut.openedAt() != null) {
+        out.write(String.format("APERTURA: %s\n", zCut.openedAt().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))).getBytes(StandardCharsets.US_ASCII));
+      }
+      if (zCut.closedAt() != null) {
+        out.write(String.format("CIERRE:   %s\n", zCut.closedAt().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))).getBytes(StandardCharsets.US_ASCII));
+      }
+
+      out.write("--------------------------------\n".getBytes(StandardCharsets.US_ASCII));
+      out.write(BOLD_ON);
+      out.write(String.format("FONDO INICIAL:     S/ %9s\n", zCut.openingAmount()).getBytes(StandardCharsets.US_ASCII));
+      out.write(BOLD_OFF);
+      out.write("--------------------------------\n".getBytes(StandardCharsets.US_ASCII));
+      out.write(BOLD_ON);
+      out.write("VENTAS POR MEDIO DE PAGO:\n".getBytes(StandardCharsets.US_ASCII));
+      out.write(BOLD_OFF);
+
+      if (zCut.salesByPaymentMethod() != null) {
+        for (Map.Entry<String, BigDecimal> entry : zCut.salesByPaymentMethod().entrySet()) {
+          out.write(String.format("%-18s S/ %9s\n", entry.getKey() + ":", entry.getValue()).getBytes(StandardCharsets.US_ASCII));
+        }
+      }
+
+      out.write("--------------------------------\n".getBytes(StandardCharsets.US_ASCII));
+      out.write(BOLD_ON);
+      out.write(String.format("TOTAL VENTAS:      S/ %9s\n", zCut.totalSalesAmount()).getBytes(StandardCharsets.US_ASCII));
+      out.write(String.format("TOTAL COMPROBANTES: %11d\n", zCut.totalInvoicesCount()).getBytes(StandardCharsets.US_ASCII));
+      out.write(BOLD_OFF);
+
+      out.write("--------------------------------\n".getBytes(StandardCharsets.US_ASCII));
+      out.write(BOLD_ON);
+      out.write("ARQUEO DE EFECTIVO:\n".getBytes(StandardCharsets.US_ASCII));
+      out.write(BOLD_OFF);
+      out.write(String.format("Efectivo Ventas:   S/ %9s\n", zCut.netCashFromSales()).getBytes(StandardCharsets.US_ASCII));
+      out.write(String.format("Ingresos Menores:  S/ %9s\n", zCut.totalIncomes()).getBytes(StandardCharsets.US_ASCII));
+      out.write(String.format("Gastos Menores:    S/ %9s\n", zCut.totalExpenses()).getBytes(StandardCharsets.US_ASCII));
+      out.write(BOLD_ON);
+      out.write(String.format("EFECTIVO ESPERADO: S/ %9s\n", zCut.expectedCash()).getBytes(StandardCharsets.US_ASCII));
+      if (zCut.countedCash() != null) {
+        out.write(String.format("EFECTIVO CONTADO:  S/ %9s\n", zCut.countedCash()).getBytes(StandardCharsets.US_ASCII));
+      }
+      if (zCut.cashDifference() != null) {
+        String diffSign = zCut.cashDifference().compareTo(BigDecimal.ZERO) >= 0 ? "+" : "";
+        out.write(String.format("DIFERENCIA:        S/ %8s%s\n", diffSign, zCut.cashDifference()).getBytes(StandardCharsets.US_ASCII));
+      }
+      out.write(BOLD_OFF);
+
+      out.write("================================\n".getBytes(StandardCharsets.US_ASCII));
+      out.write("\n\n\n".getBytes(StandardCharsets.US_ASCII));
+      out.write("   -------------------------\n".getBytes(StandardCharsets.US_ASCII));
+      out.write(ALIGN_CENTER);
+      out.write(String.format("   %s\n", zCut.cashierName()).getBytes(StandardCharsets.US_ASCII));
+      out.write("   FIRMA DE CONFORMIDAD\n".getBytes(StandardCharsets.US_ASCII));
+      out.write("================================\n".getBytes(StandardCharsets.US_ASCII));
+
+      out.write(FEED_AND_CUT);
+      return out.toByteArray();
+    } catch (IOException e) {
+      throw new IllegalStateException("Failed to format ESC/POS Z-cut ticket", e);
+    }
+  }
 }
+

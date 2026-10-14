@@ -4,6 +4,7 @@ import com.facilcomanda.ponoa.branch.payload.BranchResponse;
 import com.facilcomanda.ponoa.branch.payload.CreateBranchRequest;
 import com.facilcomanda.ponoa.global.exception.ResourceNotFoundException;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,6 +28,12 @@ class BranchService implements BranchProvider {
   @Transactional(readOnly = true)
   public boolean isBranchActive(Long branchId) {
     return branchId != null && branchRepository.findById(branchId).map(Branch::isActive).orElse(false);
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public Optional<String> findBranchName(Long branchId) {
+    return branchId != null ? branchRepository.findById(branchId).map(Branch::name) : Optional.empty();
   }
 
   @Transactional

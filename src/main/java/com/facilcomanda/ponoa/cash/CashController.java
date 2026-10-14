@@ -6,6 +6,7 @@ import com.facilcomanda.ponoa.cash.payload.CashShiftResponse;
 import com.facilcomanda.ponoa.cash.payload.CloseCashShiftRequest;
 import com.facilcomanda.ponoa.cash.payload.CreateCashRegisterRequest;
 import com.facilcomanda.ponoa.cash.payload.OpenCashShiftRequest;
+import com.facilcomanda.ponoa.cash.payload.ZCutReportResponse;
 import com.facilcomanda.ponoa.global.security.BranchAccessValidator;
 import jakarta.validation.Valid;
 import java.net.URI;
@@ -155,6 +156,18 @@ public class CashController {
 
     return ResponseEntity.ok(response);
   }
+
+  @GetMapping("/shifts/{shiftId}/z-cut")
+  @PreAuthorize("hasAnyRole('CAJERO', 'ADMINISTRADOR', 'EMPRESA')")
+  public ResponseEntity<ZCutReportResponse> getZCutReport(
+      @PathVariable Long shiftId,
+      @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
+      @AuthenticationPrincipal Jwt jwt) {
+
+    Long branchId = branchAccessValidator.resolveAndValidateBranchId(jwt, branchIdHeader);
+    return ResponseEntity.ok(cashService.getZCutReport(branchId, shiftId));
+  }
+
 
   private String resolveFullName(Jwt jwt) {
     String given = jwt.getClaimAsString("given_name");

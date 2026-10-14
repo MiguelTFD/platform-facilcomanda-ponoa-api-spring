@@ -8,6 +8,8 @@ import com.facilcomanda.ponoa.cash.payload.CloseCashShiftRequest;
 import com.facilcomanda.ponoa.cash.payload.CreateCashRegisterRequest;
 import com.facilcomanda.ponoa.cash.payload.OpenCashShiftRequest;
 import com.facilcomanda.ponoa.global.exception.ResourceNotFoundException;
+import com.facilcomanda.ponoa.branch.BranchProvider;
+import com.facilcomanda.ponoa.cash.payload.ZCutReportResponse;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -25,15 +27,26 @@ public class CashService implements CashShiftProvider {
   private final CashRegisterRepository registerRepository;
   private final CashShiftRepository shiftRepository;
   private final CashMovementRepository movementRepository;
+  private final BranchProvider branchProvider;
+
+  public CashService(
+      CashRegisterRepository registerRepository,
+      CashShiftRepository shiftRepository,
+      CashMovementRepository movementRepository,
+      BranchProvider branchProvider) {
+    this.registerRepository = registerRepository;
+    this.shiftRepository = shiftRepository;
+    this.movementRepository = movementRepository;
+    this.branchProvider = branchProvider;
+  }
 
   public CashService(
       CashRegisterRepository registerRepository,
       CashShiftRepository shiftRepository,
       CashMovementRepository movementRepository) {
-    this.registerRepository = registerRepository;
-    this.shiftRepository = shiftRepository;
-    this.movementRepository = movementRepository;
+    this(registerRepository, shiftRepository, movementRepository, null);
   }
+
 
   @Override
   @Transactional(readOnly = true)
@@ -332,4 +345,102 @@ public class CashService implements CashShiftProvider {
         shift.notes(),
         movements);
   }
+
+  @Transactional(readOnly = true)
+  public ZCutReportResponse getZCutReport(Long branchId, Long shiftId) {
+    CashShift shift =
+        shiftRepository
+            .findByIdAndBranchId(shiftId, branchId)
+            .orElseThrow(
+                () ->
+                    new ResourceNotFoundException(
+                        "Cash shift " + shiftId + " not found in branch " + branchId));
+
+    String branchName =
+        branchProvider != null
+            ? branchProvider.findBranchName(branchId).orElse("Sucursal #" + branchId)
+            : "Sucursal #" + branchId;
+
+    String registerName =
+        registerRepository
+            .findByIdAndBranchId(shift.cashRegisterId(), branchId)
+            .map(CashRegister::name)
+            .orElse("Caja #" + shift.cashRegisterId());
+
+    Map<String, BigDecimal> paymentsByMethod =
+        shiftRepository.getPaymentsSummaryByShiftId(shiftId).stream()
+            .collect(
+                Collectors.toMap(
+                    PaymentSummaryProjection::method,
+                    PaymentSummaryProjection::total,
+                    BigDecimal::add));
+
+    BigDecimal totalCashCollected = paymentsByMethod.getOrDefault("EFECTIVO", BigDecimal.ZERO);
+    BigDecimal totalChangeGiven = shiftRepository.sumChangeGivenByShiftId(shiftId);
+    BigDecimal netCashFromSales = totalCashCollected.subtract(totalChangeGiven);
+
+    BigDecimal totalIncomes =
+        shiftRepository.sumMovementsByType(shiftId, CashMovementType.INCOME.name());
+    BigDecimal totalExpenses =
+        shiftRepository.sumMovementsByType(shiftId, CashMovementType.EXPENSE.name());
+
+    BigDecimal expectedCash =
+        shift.openingAmount()
+            .add(netCashFromSales)
+            .add(totalIncomes)
+            .subtract(totalExpenses);
+
+    BigDecimal totalSalesAmount = shiftRepository.sumOrderTotalsByShiftId(shiftId);
+
+    long totalInvoices = shiftRepository.countInvoicesByShiftId(shiftId);
+    Map<String, Long> invoicesByType =
+        shiftRepository.getInvoiceCountsByShiftId(shiftId).stream()
+            .collect(
+                Collectors.toMap(
+                    InvoiceCountProjection::type,
+                    InvoiceCountProjection::count,
+                    Long::sum));
+
+    List<CashMovementResponse> movements =
+        movementRepository.findAllByCashShiftIdOrderByCreatedAtDesc(shiftId).stream()
+            .map(
+                m ->
+                    new CashMovementResponse(
+                        m.id(),
+                        m.cashShiftId(),
+                        m.type(),
+                        m.amount(),
+                        m.reason(),
+                        m.performedByUserId(),
+                        m.createdAt()))
+            .toList();
+
+    return new ZCutReportResponse(
+        shift.id(),
+        shift.branchId(),
+        branchName,
+        shift.cashRegisterId(),
+        registerName,
+        shift.cashierUserId(),
+        shift.cashierName(),
+        shift.status(),
+        shift.openedAt(),
+        shift.closedAt(),
+        shift.openingAmount(),
+        totalSalesAmount,
+        paymentsByMethod,
+        totalIncomes,
+        totalExpenses,
+        totalCashCollected,
+        totalChangeGiven,
+        netCashFromSales,
+        expectedCash,
+        shift.closingCashCounted(),
+        shift.cashDifference(),
+        totalInvoices,
+        invoicesByType,
+        shift.notes(),
+        movements);
+  }
 }
+
