@@ -59,6 +59,32 @@ class BranchService implements BranchProvider {
     return branchRepository.save(branch).id();
   }
 
+  @Transactional
+  public void updateBranch(Long id, com.facilcomanda.ponoa.branch.payload.UpdateBranchRequest request) {
+    Branch branch =
+        branchRepository
+            .findById(id)
+            .orElseThrow(() -> new ResourceNotFoundException("Branch with id " + id + " not found."));
+
+    if (!branch.name().equalsIgnoreCase(request.name().trim())
+        && branchRepository.existsByName(request.name().trim())) {
+      throw new DuplicateKeyException("Branch with name " + request.name() + " already exists.");
+    }
+
+    Branch updated =
+        new Branch(
+            branch.id(),
+            request.name().trim(),
+            branch.code(),
+            request.address() != null ? request.address().trim() : null,
+            request.phoneNumber() != null ? request.phoneNumber().trim() : null,
+            request.isActive() != null ? request.isActive() : branch.isActive(),
+            branch.createdAt(),
+            java.time.OffsetDateTime.now());
+
+    branchRepository.save(updated);
+  }
+
   @Transactional(readOnly = true)
   public BranchResponse getBranchById(Long id) {
     return branchRepository

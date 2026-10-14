@@ -3,6 +3,8 @@ package com.facilcomanda.ponoa.table;
 import com.facilcomanda.ponoa.global.exception.ResourceNotFoundException;
 import com.facilcomanda.ponoa.table.payload.CreateFloorRequest;
 import com.facilcomanda.ponoa.table.payload.CreateTableRequest;
+import com.facilcomanda.ponoa.table.payload.UpdateFloorRequest;
+import com.facilcomanda.ponoa.table.payload.UpdateTableRequest;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.dao.DuplicateKeyException;
@@ -35,6 +37,34 @@ class TableService implements RestaurantTableProvider {
     RestaurantFloor floor =
         new RestaurantFloor(null, branchId, request.name(), request.description(), null, null);
     return floorRepository.save(floor).id();
+  }
+
+  @Transactional
+  public void updateFloor(Long floorId, Long branchId, UpdateFloorRequest request) {
+    RestaurantFloor existing =
+        floorRepository
+            .findByIdAndBranchId(floorId, branchId)
+            .orElseThrow(
+                () ->
+                    new ResourceNotFoundException(
+                        "Floor " + floorId + " not found in branch " + branchId));
+
+    if (!existing.name().equalsIgnoreCase(request.name().trim())
+        && floorRepository.existsByBranchIdAndName(branchId, request.name().trim())) {
+      throw new DuplicateKeyException(
+          "Floor with name '" + request.name() + "' already exists in branch " + branchId);
+    }
+
+    RestaurantFloor updated =
+        new RestaurantFloor(
+            existing.id(),
+            existing.branchId(),
+            request.name().trim(),
+            request.description() != null ? request.description().trim() : null,
+            existing.createdAt(),
+            existing.deletedAt());
+
+    floorRepository.save(updated);
   }
 
   @Transactional(readOnly = true)
@@ -110,6 +140,40 @@ class TableService implements RestaurantTableProvider {
             () ->
                 new ResourceNotFoundException(
                     "Table " + tableId + " not found in branch " + branchId));
+  }
+
+  @Transactional
+  public void updateTable(Long tableId, Long branchId, UpdateTableRequest request) {
+    RestaurantTable existing = getTable(branchId, tableId);
+
+    // Verify target floor belongs to this branch
+    floorRepository
+        .findByIdAndBranchId(request.floorId(), branchId)
+        .orElseThrow(
+            () ->
+                new ResourceNotFoundException(
+                    "Floor " + request.floorId() + " not found in branch " + branchId));
+
+    if ((!existing.floorId().equals(request.floorId())
+            || !existing.name().equalsIgnoreCase(request.name().trim()))
+        && tableRepository.existsByFloorIdAndName(request.floorId(), request.name().trim())) {
+      throw new DuplicateKeyException(
+          "Table with name '" + request.name() + "' already exists in floor " + request.floorId());
+    }
+
+    RestaurantTable updated =
+        new RestaurantTable(
+            existing.id(),
+            existing.branchId(),
+            request.floorId(),
+            request.name().trim(),
+            request.description() != null ? request.description().trim() : null,
+            existing.state(),
+            request.chairs(),
+            existing.createdAt(),
+            existing.deletedAt());
+
+    tableRepository.save(updated);
   }
 
   @Transactional

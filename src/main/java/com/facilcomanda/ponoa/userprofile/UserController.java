@@ -112,6 +112,49 @@ class UserController {
     return ResponseEntity.ok(user);
   }
 
+  @org.springframework.web.bind.annotation.PutMapping("/{id}")
+  @PreAuthorize("hasAnyRole('ADMINISTRADOR', 'EMPRESA')")
+  public ResponseEntity<Void> updateUser(
+      @AuthenticationPrincipal Jwt jwt,
+      @PathVariable UUID id,
+      @Valid @RequestBody com.facilcomanda.ponoa.userprofile.payload.UpdateUserRequest request) {
+
+    UUID callerId = UUID.fromString(jwt.getSubject());
+    boolean isEmpresa = branchAccessValidator.isEmpresa(jwt);
+    Long tokenBranchId = extractSingleBranchId(jwt);
+
+    userService.updateUser(callerId, isEmpresa, tokenBranchId, id, request);
+    return ResponseEntity.noContent().build();
+  }
+
+  @org.springframework.web.bind.annotation.PatchMapping("/{id}/deactivate")
+  @PreAuthorize("hasAnyRole('ADMINISTRADOR', 'EMPRESA')")
+  public ResponseEntity<Void> deactivateUser(
+      @AuthenticationPrincipal Jwt jwt,
+      @PathVariable UUID id) {
+
+    UUID callerId = UUID.fromString(jwt.getSubject());
+    boolean isEmpresa = branchAccessValidator.isEmpresa(jwt);
+    Long tokenBranchId = extractSingleBranchId(jwt);
+
+    userService.deactivateUser(callerId, isEmpresa, tokenBranchId, id);
+    return ResponseEntity.noContent().build();
+  }
+
+  @org.springframework.web.bind.annotation.DeleteMapping("/{id}")
+  @PreAuthorize("hasAnyRole('ADMINISTRADOR', 'EMPRESA')")
+  public ResponseEntity<Void> deleteUser(
+      @AuthenticationPrincipal Jwt jwt,
+      @PathVariable UUID id) {
+
+    UUID callerId = UUID.fromString(jwt.getSubject());
+    boolean isEmpresa = branchAccessValidator.isEmpresa(jwt);
+    Long tokenBranchId = extractSingleBranchId(jwt);
+
+    userService.deactivateUser(callerId, isEmpresa, tokenBranchId, id);
+    return ResponseEntity.noContent().build();
+  }
+
   private Long extractSingleBranchId(Jwt jwt) {
     if (jwt == null) {
       return null;

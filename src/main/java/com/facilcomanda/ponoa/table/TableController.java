@@ -69,6 +69,20 @@ class TableController {
     return ResponseEntity.ok(floors);
   }
 
+  @org.springframework.web.bind.annotation.PutMapping("/floors/{id}")
+  @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('ADMINISTRADOR', 'EMPRESA')")
+  public ResponseEntity<Void> updateFloor(
+      @PathVariable Long id,
+      @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
+      @AuthenticationPrincipal Jwt jwt,
+      @Valid @RequestBody com.facilcomanda.ponoa.table.payload.UpdateFloorRequest request) {
+
+    Long branchId = branchAccessValidator.resolveAndValidateBranchId(jwt, branchIdHeader);
+    tableService.updateFloor(id, branchId, request);
+
+    return ResponseEntity.noContent().build();
+  }
+
   @PostMapping("/tables")
   @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('ADMINISTRADOR', 'EMPRESA')")
   public ResponseEntity<Void> createTable(
@@ -130,6 +144,20 @@ class TableController {
             t.description(),
             t.state(),
             t.chairs()));
+  }
+
+  @org.springframework.web.bind.annotation.PutMapping("/tables/{id}")
+  @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('ADMINISTRADOR', 'EMPRESA')")
+  public ResponseEntity<Void> updateTable(
+      @PathVariable Long id,
+      @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
+      @AuthenticationPrincipal Jwt jwt,
+      @Valid @RequestBody com.facilcomanda.ponoa.table.payload.UpdateTableRequest request) {
+
+    Long branchId = branchAccessValidator.resolveAndValidateBranchId(jwt, branchIdHeader);
+    tableService.updateTable(id, branchId, request);
+
+    return ResponseEntity.noContent().build();
   }
 
   @PatchMapping("/tables/{id}/state")

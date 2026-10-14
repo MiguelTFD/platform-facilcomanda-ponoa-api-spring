@@ -205,6 +205,121 @@ class UserService implements UserBranchResolver {
     return toResponse(user);
   }
 
+  @Transactional
+  public void updateUser(
+      UUID callerId,
+      boolean isCallerEmpresa,
+      Long tokenBranchId,
+      UUID targetUserId,
+      com.facilcomanda.ponoa.userprofile.payload.UpdateUserRequest request) {
+
+    AppUser user =
+        userRepository
+            .findById(targetUserId)
+            .orElseThrow(
+                () -> new ResourceNotFoundException("User with id " + targetUserId + " not found."));
+
+    Long targetBranchId = user.branchId();
+
+    if (!isCallerEmpresa) {
+      Long callerBranchId =
+          userRepository
+              .findById(callerId)
+              .map(AppUser::branchId)
+              .orElse(tokenBranchId);
+
+      boolean isSameBranch = callerBranchId != null && callerBranchId.equals(user.branchId());
+      if (!isSameBranch) {
+        throw new AccessDeniedException("You do not have permission to modify this user.");
+      }
+
+      if (request.role() == AppUserRole.EMPRESA) {
+        throw new AccessDeniedException("Administrators cannot promote users to EMPRESA.");
+      }
+
+      if (request.branchId() != null && !request.branchId().equals(user.branchId())) {
+        throw new AccessDeniedException("Administrators cannot reassign users to other branches.");
+      }
+    } else {
+      if (request.branchId() != null) {
+        if (!branchProvider.existsBranch(request.branchId())) {
+          throw new ResourceNotFoundException("Branch with id " + request.branchId() + " does not exist.");
+        }
+        targetBranchId = request.branchId();
+      }
+    }
+
+    String role = request.role() != null ? request.role().name() : user.role();
+    Boolean isActive = request.isActive() != null ? request.isActive() : user.isActive();
+
+    AppUser updated =
+        new AppUser(
+            user.id(),
+            user.email(),
+            request.firstName().trim(),
+            request.lastName().trim(),
+            request.phoneNumber() != null ? request.phoneNumber().trim() : null,
+            role,
+            targetBranchId,
+            user.createdBy(),
+            isActive,
+            user.createdAt(),
+            OffsetDateTime.now(),
+            user.documents(),
+            user.addresses());
+
+    userRepository.save(updated);
+  }
+
+  @Transactional
+  public void deactivateUser(
+      UUID callerId,
+      boolean isCallerEmpresa,
+      Long tokenBranchId,
+      UUID targetUserId) {
+
+    if (callerId.equals(targetUserId)) {
+      throw new IllegalStateException("Users cannot deactivate their own account.");
+    }
+
+    AppUser user =
+        userRepository
+            .findById(targetUserId)
+            .orElseThrow(
+                () -> new ResourceNotFoundException("User with id " + targetUserId + " not found."));
+
+    if (!isCallerEmpresa) {
+      Long callerBranchId =
+          userRepository
+              .findById(callerId)
+              .map(AppUser::branchId)
+              .orElse(tokenBranchId);
+
+      boolean isSameBranch = callerBranchId != null && callerBranchId.equals(user.branchId());
+      if (!isSameBranch) {
+        throw new AccessDeniedException("You do not have permission to modify this user.");
+      }
+    }
+
+    AppUser updated =
+        new AppUser(
+            user.id(),
+            user.email(),
+            user.firstName(),
+            user.lastName(),
+            user.phoneNumber(),
+            user.role(),
+            user.branchId(),
+            user.createdBy(),
+            false,
+            user.createdAt(),
+            OffsetDateTime.now(),
+            user.documents(),
+            user.addresses());
+
+    userRepository.save(updated);
+  }
+
   private UserResponse toResponse(AppUser user) {
     return new UserResponse(
         user.id(),

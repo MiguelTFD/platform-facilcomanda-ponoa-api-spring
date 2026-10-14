@@ -48,4 +48,13 @@ class BranchController {
   public ResponseEntity<List<BranchResponse>> listActiveBranches() {
     return ResponseEntity.ok(branchService.getAllActiveBranches());
   }
+
+  @org.springframework.web.bind.annotation.PutMapping("/{id}")
+  @PreAuthorize("hasRole('EMPRESA')")
+  public ResponseEntity<Void> updateBranch(
+      @PathVariable Long id,
+      @Valid @RequestBody com.facilcomanda.ponoa.branch.payload.UpdateBranchRequest request) {
+    branchService.updateBranch(id, request);
+    return ResponseEntity.noContent().build();
+  }
 }
