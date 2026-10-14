@@ -33,7 +33,13 @@ public class AuthService {
     this.tokenUrl = issuerUri + "/protocol/openid-connect/token";
     this.clientId = clientId;
     this.clientSecret = clientSecret;
-    this.restClient = RestClient.builder().build();
+
+    org.springframework.http.client.SimpleClientHttpRequestFactory factory =
+        new org.springframework.http.client.SimpleClientHttpRequestFactory();
+    factory.setConnectTimeout(java.time.Duration.ofMillis(3000));
+    factory.setReadTimeout(java.time.Duration.ofMillis(5000));
+
+    this.restClient = RestClient.builder().requestFactory(factory).build();
   }
 
   public TokenResponse login(LoginRequest request) {

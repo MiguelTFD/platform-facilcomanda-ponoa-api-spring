@@ -92,6 +92,8 @@ public class BranchAccessValidator {
     if (branches != null && !branches.isEmpty()) {
       return branches.stream()
           .map(Object::toString)
+          .map(String::trim)
+          .filter(s -> s.matches("^\\d+$"))
           .map(Long::parseLong)
           .toList();
     }

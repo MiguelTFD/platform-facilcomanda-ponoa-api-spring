@@ -140,6 +140,56 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     return problemDetail;
   }
 
+  @ExceptionHandler(org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class)
+  public ProblemDetail handleMethodArgumentTypeMismatch(
+      org.springframework.web.method.annotation.MethodArgumentTypeMismatchException ex) {
+    String detail =
+        String.format(
+            "El parámetro '%s' tiene un valor inválido ('%s'). Se esperaba un dato de tipo %s.",
+            ex.getName(),
+            ex.getValue(),
+            ex.getRequiredType() != null ? ex.getRequiredType().getSimpleName() : "válido");
+    ProblemDetail problemDetail =
+        ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, detail);
+    problemDetail.setTitle("Tipo de Parámetro Inválido");
+    problemDetail.setType(URI.create("https://api.facilcomanda.com/errors/invalid-parameter-type"));
+    problemDetail.setProperty("parameterName", ex.getName());
+    problemDetail.setProperty("invalidValue", String.valueOf(ex.getValue()));
+    problemDetail.setProperty("timestamp", Instant.now());
+    return problemDetail;
+  }
+
+  @ExceptionHandler(org.springframework.web.bind.MissingRequestHeaderException.class)
+  public ProblemDetail handleMissingRequestHeader(
+      org.springframework.web.bind.MissingRequestHeaderException ex) {
+    ProblemDetail problemDetail =
+        ProblemDetail.forStatusAndDetail(
+            HttpStatus.BAD_REQUEST,
+            "El encabezado HTTP requerido '" + ex.getHeaderName() + "' no fue proporcionado en la solicitud.");
+    problemDetail.setTitle("Encabezado HTTP Requerido Faltante");
+    problemDetail.setType(URI.create("https://api.facilcomanda.com/errors/missing-header"));
+    problemDetail.setProperty("headerName", ex.getHeaderName());
+    problemDetail.setProperty("timestamp", Instant.now());
+    return problemDetail;
+  }
+
+  @Override
+  @Nullable
+  protected ResponseEntity<Object> handleHttpMessageNotReadable(
+      org.springframework.http.converter.HttpMessageNotReadableException ex,
+      HttpHeaders headers,
+      HttpStatusCode status,
+      WebRequest request) {
+    ProblemDetail problemDetail =
+        ProblemDetail.forStatusAndDetail(
+            HttpStatus.BAD_REQUEST,
+            "El cuerpo de la solicitud no es un JSON válido o contiene tipos de datos incompatibles.");
+    problemDetail.setTitle("Cuerpo de Solicitud Inválido");
+    problemDetail.setType(URI.create("https://api.facilcomanda.com/errors/malformed-json"));
+    problemDetail.setProperty("timestamp", Instant.now());
+    return ResponseEntity.status(HttpStatus.BAD_REQUEST).headers(headers).body(problemDetail);
+  }
+
   @Override
   @Nullable
   protected ResponseEntity<Object> handleMethodArgumentNotValid(

@@ -25,9 +25,15 @@ class OrderEmailListener {
   @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
   void handleOrderPlacedEvent(OrderPlacedEvent event) {
 
+    java.util.List<String> recipients = new java.util.ArrayList<>();
+    if (event.customerEmail() != null && !event.customerEmail().isBlank()) {
+      recipients.add(event.customerEmail().trim());
+    }
+    recipients.add("pedidos@facilcomanda.com");
+
     SimpleMailMessage message = new SimpleMailMessage();
     message.setFrom("no-reply@facilcomanda.com");
-    message.setTo(event.customerEmail(), "pedidos@facilcomanda.com");
+    message.setTo(recipients.toArray(new String[0]));
     message.setSubject("Confirmacion de Orden #" + event.orderId() + " - FacilComanda Ponoa");
     message.setText(
         "Tu orden ha sido registrada exitosamente por un total de S/ "

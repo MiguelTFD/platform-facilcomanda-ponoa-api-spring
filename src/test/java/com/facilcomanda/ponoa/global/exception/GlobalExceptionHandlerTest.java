@@ -176,4 +176,56 @@ class GlobalExceptionHandlerTest {
         (Map<String, String>) problem.getProperties().get("invalidParameters");
     assertThat(invalidParams).containsEntry("email", "must not be blank");
   }
+
+  @Test
+  @DisplayName("Should handle MethodArgumentTypeMismatch as 400 BAD_REQUEST")
+  void shouldHandleMethodArgumentTypeMismatch() {
+    org.springframework.web.method.annotation.MethodArgumentTypeMismatchException ex =
+        new org.springframework.web.method.annotation.MethodArgumentTypeMismatchException(
+            "abc", Long.class, "orderId", null, null);
+
+    ProblemDetail problem = handler.handleMethodArgumentTypeMismatch(ex);
+
+    assertThat(problem.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST.value());
+    assertThat(problem.getTitle()).isEqualTo("Tipo de Parámetro Inválido");
+    assertThat(problem.getProperties().get("parameterName")).isEqualTo("orderId");
+    assertThat(problem.getProperties().get("invalidValue")).isEqualTo("abc");
+  }
+
+  @Test
+  @DisplayName("Should handle MissingRequestHeaderException as 400 BAD_REQUEST")
+  void shouldHandleMissingRequestHeaderException() throws Exception {
+    java.lang.reflect.Method method =
+        GlobalExceptionHandlerTest.class.getDeclaredMethod("dummyMethod", String.class);
+    org.springframework.core.MethodParameter param =
+        new org.springframework.core.MethodParameter(method, 0);
+    org.springframework.web.bind.MissingRequestHeaderException ex =
+        new org.springframework.web.bind.MissingRequestHeaderException("X-Branch-Id", param);
+
+    ProblemDetail problem = handler.handleMissingRequestHeader(ex);
+
+    assertThat(problem.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST.value());
+    assertThat(problem.getTitle()).isEqualTo("Encabezado HTTP Requerido Faltante");
+    assertThat(problem.getProperties().get("headerName")).isEqualTo("X-Branch-Id");
+  }
+
+  @Test
+  @DisplayName("Should handle HttpMessageNotReadable as 400 BAD_REQUEST")
+  void shouldHandleHttpMessageNotReadable() {
+    org.springframework.http.converter.HttpMessageNotReadableException ex =
+        new org.springframework.http.converter.HttpMessageNotReadableException(
+            "Malformed JSON", mock(org.springframework.http.HttpInputMessage.class));
+
+    ResponseEntity<Object> response =
+        handler.handleHttpMessageNotReadable(
+            ex, new HttpHeaders(), HttpStatus.BAD_REQUEST, mock(WebRequest.class));
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(response.getBody()).isInstanceOf(ProblemDetail.class);
+
+    ProblemDetail problem = (ProblemDetail) response.getBody();
+    assertThat(problem.getTitle()).isEqualTo("Cuerpo de Solicitud Inválido");
+  }
+
+  private void dummyMethod(String header) {}
 }
