@@ -16,8 +16,13 @@ spring:
     password: ${FCP_DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
-      maximum-pool-size: 10
+      pool-name: FacilComandaHikariPool
+      maximum-pool-size: 20
+      minimum-idle: 5
       connection-timeout: 5000
+      idle-timeout: 300000
+      max-lifetime: 1800000
+      leak-detection-threshold: 2000
 
   flyway:
     enabled: true
@@ -43,6 +48,28 @@ spring:
           starttls:
             enable: true
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: when_authorized
+      probes:
+        enabled: true
+    prometheus:
+      enabled: true
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+  info:
+    env:
+      enabled: true
+
 logging:
   level:
     org.springframework.jdbc.core.JdbcTemplate: DEBUG
@@ -57,4 +84,3 @@ app:
     token: ${TAX_API_TOKEN:}
     connect-timeout-ms: 2000
     read-timeout-ms: 3000
-
