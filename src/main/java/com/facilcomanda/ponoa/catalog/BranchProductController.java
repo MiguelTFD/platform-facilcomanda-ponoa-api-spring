@@ -86,11 +86,14 @@ class BranchProductController {
     return ResponseEntity.ok(list);
   }
 
-  private BranchProductResponse toResponse(BranchProduct bp) {
+  private BranchProductResponse toResponse(BranchProductDetailedView bp) {
     return new BranchProductResponse(
         bp.id(),
         bp.branchId(),
         bp.skuId(),
+        bp.skuCode(),
+        bp.productName(),
+        bp.presentationName(),
         bp.price(),
         bp.isAvailable());
   }

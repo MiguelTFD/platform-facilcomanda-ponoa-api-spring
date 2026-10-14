@@ -6,5 +6,8 @@ public record BranchProductResponse(
     Long id,
     Long branchId,
     Long skuId,
+    String skuCode,
+    String productName,
+    String presentationName,
     BigDecimal price,
     Boolean isAvailable) {}

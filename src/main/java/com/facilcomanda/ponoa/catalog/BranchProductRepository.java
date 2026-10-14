@@ -33,6 +33,18 @@ interface BranchProductRepository extends CrudRepository<BranchProduct, Long> {
   @Query("SELECT id as sku_id, presentation_name FROM sku_presentations WHERE id IN (:skuIds)")
   List<SkuNameView> findPresentationNamesBySkuIds(@Param("skuIds") Collection<Long> skuIds);
 
+  @Query(
+      "SELECT bp.id as id, :branchId as branch_id, sp.id as sku_id, sp.sku_code as sku_code, "
+          + "p.name as product_name, sp.presentation_name as presentation_name, "
+          + "COALESCE(bp.price, sp.current_price) as price, "
+          + "COALESCE(bp.is_available, TRUE) as is_available "
+          + "FROM sku_presentations sp "
+          + "JOIN products p ON sp.product_id = p.id "
+          + "LEFT JOIN branch_products bp ON bp.sku_id = sp.id AND bp.branch_id = :branchId "
+          + "WHERE p.is_active = TRUE AND sp.is_active = TRUE "
+          + "ORDER BY p.name, sp.presentation_name")
+  List<BranchProductDetailedView> findAllDetailedByBranchId(@Param("branchId") Long branchId);
+
   @Modifying
   @Query(
       "INSERT INTO branch_products (branch_id, sku_id, price, is_available) "
@@ -51,3 +63,13 @@ record SkuBasePriceView(Long skuId, BigDecimal currentPrice) {}
 record SkuProductionAreaView(Long skuId, String productionArea) {}
 
 record SkuNameView(Long skuId, String presentationName) {}
+
+record BranchProductDetailedView(
+    Long id,
+    Long branchId,
+    Long skuId,
+    String skuCode,
+    String productName,
+    String presentationName,
+    BigDecimal price,
+    Boolean isAvailable) {}

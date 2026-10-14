@@ -53,22 +53,22 @@ class OrderController {
   }
 
   @GetMapping("/{id}")
-  public ResponseEntity<CustomerOrder> getOrder(
+  public ResponseEntity<OrderResponse> getOrder(
       @PathVariable Long id,
       @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
       @AuthenticationPrincipal Jwt jwt) {
 
     Long branchId = branchAccessValidator.resolveAndValidateBranchId(jwt, branchIdHeader);
-    return ResponseEntity.ok(orderService.getOrderByIdAndBranch(id, branchId));
+    return ResponseEntity.ok(orderService.getEnrichedOrderByIdAndBranch(id, branchId));
   }
 
   @GetMapping
-  public ResponseEntity<List<CustomerOrder>> listOrders(
+  public ResponseEntity<List<OrderResponse>> listOrders(
       @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
       @AuthenticationPrincipal Jwt jwt) {
 
     Long branchId = branchAccessValidator.resolveAndValidateBranchId(jwt, branchIdHeader);
-    return ResponseEntity.ok(orderService.getOrdersByBranch(branchId));
+    return ResponseEntity.ok(orderService.getEnrichedOrdersByBranch(branchId));
   }
 
   @PostMapping("/{id}/items")

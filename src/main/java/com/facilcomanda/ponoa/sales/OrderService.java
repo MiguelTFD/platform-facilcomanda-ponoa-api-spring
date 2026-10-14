@@ -158,8 +158,79 @@ class OrderService implements CustomerOrderProvider {
   }
 
   @Transactional(readOnly = true)
+  public OrderResponse getEnrichedOrderByIdAndBranch(Long orderId, Long branchId) {
+    CustomerOrder order = getOrderByIdAndBranch(orderId, branchId);
+    return mapToOrderResponse(order);
+  }
+
+  @Transactional(readOnly = true)
   public List<CustomerOrder> getOrdersByBranch(Long branchId) {
     return orderRepository.findAllByBranchId(branchId);
+  }
+
+  @Transactional(readOnly = true)
+  public List<OrderResponse> getEnrichedOrdersByBranch(Long branchId) {
+    List<CustomerOrder> orders = orderRepository.findAllByBranchId(branchId);
+    if (orders.isEmpty()) {
+      return List.of();
+    }
+
+    Set<Long> allSkuIds =
+        orders.stream()
+            .filter(o -> o.items() != null)
+            .flatMap(o -> o.items().stream())
+            .map(OrderItem::skuId)
+            .collect(Collectors.toSet());
+
+    Map<Long, String> skuNames = catalogPriceProvider.getSkuNames(allSkuIds);
+
+    return orders.stream()
+        .map(o -> mapToOrderResponse(o, skuNames))
+        .toList();
+  }
+
+  private OrderResponse mapToOrderResponse(CustomerOrder order) {
+    Set<Long> skuIds =
+        order.items() != null
+            ? order.items().stream().map(OrderItem::skuId).collect(Collectors.toSet())
+            : Set.of();
+    Map<Long, String> skuNames = catalogPriceProvider.getSkuNames(skuIds);
+    return mapToOrderResponse(order, skuNames);
+  }
+
+  private OrderResponse mapToOrderResponse(CustomerOrder order, Map<Long, String> skuNames) {
+    String tableName = resolveTableName(order.branchId(), order.tableId());
+
+    List<OrderResponse.OrderItemResponse> items =
+        order.items() != null
+            ? order.items().stream()
+                .map(
+                    item ->
+                        new OrderResponse.OrderItemResponse(
+                            item.skuId(),
+                            skuNames.getOrDefault(item.skuId(), "SKU-" + item.skuId()),
+                            item.quantity(),
+                            item.unitPriceAtPurchase(),
+                            item.subtotal(),
+                            item.comments()))
+                .toList()
+            : List.of();
+
+    return new OrderResponse(
+        order.id(),
+        order.branchId(),
+        order.appUserId(),
+        order.idempotencyKey(),
+        order.tableId(),
+        tableName,
+        order.orderType(),
+        order.notes(),
+        order.totalAmount(),
+        order.status(),
+        order.cancelledBy(),
+        order.cancellationReason(),
+        order.cancelledAt(),
+        items);
   }
 
   @Transactional

@@ -26,8 +26,8 @@ class BranchProductService implements CatalogPriceProvider {
   }
 
   @Transactional(readOnly = true)
-  public List<BranchProduct> getBranchProducts(Long branchId) {
-    return branchProductRepository.findAllByBranchId(branchId);
+  public List<BranchProductDetailedView> getBranchProducts(Long branchId) {
+    return branchProductRepository.findAllDetailedByBranchId(branchId);
   }
 
   @Override

@@ -40,4 +40,26 @@ class ProductController {
     }
     return ResponseEntity.ok(productService.getCatalogSummaries(pageNumber, pageSize));
   }
+
+  @GetMapping("/{id}")
+  public ResponseEntity<com.facilcomanda.ponoa.catalog.payload.ProductDetailResponse> getProductById(
+      @PathVariable Long id) {
+    return ResponseEntity.ok(productService.getProductById(id));
+  }
+
+  @PutMapping("/{id}")
+  @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('ADMINISTRADOR', 'EMPRESA')")
+  public ResponseEntity<Void> updateProduct(
+      @PathVariable Long id,
+      @Valid @RequestBody com.facilcomanda.ponoa.catalog.payload.UpdateProductRequest request) {
+    productService.updateProduct(id, request);
+    return ResponseEntity.noContent().build();
+  }
+
+  @DeleteMapping("/{id}")
+  @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('ADMINISTRADOR', 'EMPRESA')")
+  public ResponseEntity<Void> deleteProduct(@PathVariable Long id) {
+    productService.softDeleteProduct(id);
+    return ResponseEntity.noContent().build();
+  }
 }
