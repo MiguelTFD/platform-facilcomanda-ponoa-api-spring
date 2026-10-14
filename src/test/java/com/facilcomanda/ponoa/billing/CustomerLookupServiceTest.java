@@ -145,4 +145,53 @@ class CustomerLookupServiceTest {
     assertThat(response.allowManualEntry()).isTrue();
     assertThat(response.message()).contains("no encontrado");
   }
+
+  @Test
+  @DisplayName("Should serve from negative cache on repeated non-existent document queries")
+  void shouldServeFromNegativeCacheOnRepeatedNonExistentQueries() {
+    when(customerRepository.findByIdentityDocumentTypeAndIdentityDocumentNumber("DNI", "99999999"))
+        .thenReturn(Optional.empty());
+
+    when(taxIdLookupClient.lookupDni("99999999")).thenReturn(Optional.empty());
+
+    // First call -> misses DB, calls external API, returns notFound, stores in negative cache
+    CustomerLookupResponse first = lookupService.lookupCustomer("DNI", "99999999");
+    assertThat(first.found()).isFalse();
+
+    // Second call -> hits negative cache, external API is NOT called again
+    CustomerLookupResponse second = lookupService.lookupCustomer("DNI", "99999999");
+    assertThat(second.found()).isFalse();
+    assertThat(second.source()).isEqualTo("NEGATIVE_CACHE");
+    assertThat(second.allowManualEntry()).isTrue();
+
+    // Remote API was called only once
+    verify(taxIdLookupClient).lookupDni("99999999");
+  }
+
+  @Test
+  @DisplayName("Should fallback gracefully without calling external API when daily quota is exceeded")
+  void shouldFallbackGracefullyWhenDailyQuotaExceeded() {
+    CustomerAntiAbuseService tightQuotaService = new CustomerAntiAbuseService(100, 100, 100, 1);
+    CustomerLookupService serviceWithTightQuota =
+        new CustomerLookupService(customerRepository, taxIdLookupClient, tightQuotaService);
+
+    when(customerRepository.findByIdentityDocumentTypeAndIdentityDocumentNumber(any(), any()))
+        .thenReturn(Optional.empty());
+
+    when(taxIdLookupClient.lookupDni("70135061"))
+        .thenReturn(Optional.of(new TaxCustomerDto("CLIENTE UNO", "DNI", "70135061", null)));
+
+    // First call uses quota (1/1)
+    CustomerLookupResponse first = serviceWithTightQuota.lookupCustomer("DNI", "70135061");
+    assertThat(first.found()).isTrue();
+
+    // Second call for a new document: daily quota is exhausted
+    CustomerLookupResponse second = serviceWithTightQuota.lookupCustomer("DNI", "70135062");
+    assertThat(second.found()).isFalse();
+    assertThat(second.source()).isEqualTo("QUOTA_EXCEEDED");
+    assertThat(second.allowManualEntry()).isTrue();
+    assertThat(second.message()).containsIgnoringCase("diario");
+
+    verify(taxIdLookupClient, never()).lookupDni("70135062");
+  }
 }

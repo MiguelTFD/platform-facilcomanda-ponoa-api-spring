@@ -44,6 +44,22 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     return problemDetail;
   }
 
+  @ExceptionHandler(RateLimitExceededException.class)
+  org.springframework.http.ResponseEntity<ProblemDetail> handleRateLimitExceeded(
+      RateLimitExceededException ex) {
+    ProblemDetail problemDetail =
+        ProblemDetail.forStatusAndDetail(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage());
+    problemDetail.setTitle("Limite de Consultas Excedido");
+    problemDetail.setType(URI.create("https://api.facilcomanda.com/errors/rate-limit"));
+    problemDetail.setProperty("retryAfterSeconds", ex.getRetryAfterSeconds());
+    problemDetail.setProperty("limitType", ex.getLimitType());
+    problemDetail.setProperty("timestamp", Instant.now());
+
+    return org.springframework.http.ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+        .header("Retry-After", String.valueOf(ex.getRetryAfterSeconds()))
+        .body(problemDetail);
+  }
+
   @ExceptionHandler(Exception.class)
   ProblemDetail handleGenericException(Exception ex) {
     ProblemDetail problemDetail =

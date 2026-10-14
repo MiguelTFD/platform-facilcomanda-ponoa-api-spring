@@ -23,7 +23,11 @@ public record CustomerLookupResponse(
   }
 
   public static CustomerLookupResponse notFound(String message) {
+    return notFound("NOT_FOUND", message);
+  }
+
+  public static CustomerLookupResponse notFound(String source, String message) {
     return new CustomerLookupResponse(
-        false, null, null, null, null, null, "NOT_FOUND", message, true);
+        false, null, null, null, null, null, source, message, true);
   }
 }
