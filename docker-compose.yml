@@ -5,27 +5,79 @@ services:
     image: postgres:15-alpine
     container_name: fcp-postgres
     environment:
-      POSTGRES_USER: ${FCP_DB_USER}
-      POSTGRES_PASSWORD: ${FCP_DB_PASSWORD}
-      POSTGRES_DB: ${FCP_DB_NAME}
+      POSTGRES_USER: ${FCP_DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${FCP_DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${FCP_DB_NAME:-fcp_db}
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${FCP_DB_USER:-postgres} -d ${FCP_DB_NAME:-fcp_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: fcp-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${FCP_RABBIT_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${FCP_RABBIT_PASSWORD:-guest}
+    ports:
+      - "5672:5672"     # AMQP
+      - "15672:15672"   # Management Dashboard UI
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   keycloak:
     image: quay.io/keycloak/keycloak:24.0.1
     container_name: fcp-keycloak
     environment:
-      KEYCLOAK_ADMIN: ${FCP_KC_ADMIN}
-      KEYCLOAK_ADMIN_PASSWORD: ${FCP_KC_PASSWORD}
+      KEYCLOAK_ADMIN: ${FCP_KC_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${FCP_KC_PASSWORD:-admin}
     command: start-dev --import-realm
     ports:
       - "8080:8080"
     volumes:
       - ./docker/keycloak/fcp-realm.json:/opt/keycloak/data/import/realm.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fcp-api
+    ports:
+      - "8081:8081"
+    environment:
+      FCP_DB_HOST: postgres
+      FCP_DB_PORT: 5432
+      FCP_DB_NAME: ${FCP_DB_NAME:-fcp_db}
+      FCP_DB_USER: ${FCP_DB_USER:-postgres}
+      FCP_DB_PASSWORD: ${FCP_DB_PASSWORD:-postgres}
+      FCP_RABBIT_HOST: rabbitmq
+      FCP_RABBIT_PORT: 5672
+      FCP_RABBIT_USER: ${FCP_RABBIT_USER:-guest}
+      FCP_RABBIT_PASSWORD: ${FCP_RABBIT_PASSWORD:-guest}
+      KEYCLOAK_ISSUER_URI: http://keycloak:8080/realms/fcp-realm
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:
   pgdata:
+  rabbitmq_data:

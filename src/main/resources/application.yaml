@@ -6,14 +6,18 @@ spring:
     name: platform-facilcomanda-ponoa-api-spring
 
   rabbitmq:
+    host: ${FCP_RABBIT_HOST:localhost}
+    port: ${FCP_RABBIT_PORT:5672}
+    username: ${FCP_RABBIT_USER:guest}
+    password: ${FCP_RABBIT_PASSWORD:guest}
     listener:
       simple:
         prefetch: 1
 
   datasource:
-    url: jdbc:postgresql://localhost:5432/${FCP_DB_NAME}
-    username: ${FCP_DB_USER}
-    password: ${FCP_DB_PASSWORD}
+    url: jdbc:postgresql://${FCP_DB_HOST:localhost}:${FCP_DB_PORT:5432}/${FCP_DB_NAME:fcp_db}
+    username: ${FCP_DB_USER:postgres}
+    password: ${FCP_DB_PASSWORD:postgres}
     driver-class-name: org.postgresql.Driver
     hikari:
       pool-name: FacilComandaHikariPool
@@ -33,8 +37,9 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: http://localhost:8080/realms/fcp-realm
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8080/realms/fcp-realm}
           jwk-set-uri: ${spring.security.oauth2.resourceserver.jwt.issuer-uri}/protocol/openid-connect/certs
+
 
   mail:
     host: smtp.myprovider.com
