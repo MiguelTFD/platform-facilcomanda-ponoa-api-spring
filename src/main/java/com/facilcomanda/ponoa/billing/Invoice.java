@@ -13,6 +13,7 @@ import org.springframework.data.relational.core.mapping.Table;
 public record Invoice(
     @Id Long id,
     @Column("branch_id") Long branchId,
+    @Column("cash_shift_id") Long cashShiftId,
     @Column("order_id") Long orderId,
     @Column("customer_id") Long customerId,
     @Column("invoice_number") String invoiceNumber,

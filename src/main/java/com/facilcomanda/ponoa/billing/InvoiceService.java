@@ -3,6 +3,7 @@ package com.facilcomanda.ponoa.billing;
 import com.facilcomanda.ponoa.billing.payload.InvoicePaymentPayload;
 import com.facilcomanda.ponoa.billing.payload.InvoiceResponse;
 import com.facilcomanda.ponoa.billing.payload.PayOrderRequest;
+import com.facilcomanda.ponoa.cash.CashShiftProvider;
 import com.facilcomanda.ponoa.global.exception.ResourceNotFoundException;
 import com.facilcomanda.ponoa.sales.CustomerOrderProvider;
 import java.math.BigDecimal;
@@ -23,16 +24,27 @@ public class InvoiceService {
   private final InvoiceRepository invoiceRepository;
   private final InvoiceSeriesRepository invoiceSeriesRepository;
   private final CustomerOrderProvider customerOrderProvider;
+  private final CashShiftProvider cashShiftProvider;
+
+  public InvoiceService(
+      CustomerRepository customerRepository,
+      InvoiceRepository invoiceRepository,
+      InvoiceSeriesRepository invoiceSeriesRepository,
+      CustomerOrderProvider customerOrderProvider,
+      Optional<CashShiftProvider> cashShiftProvider) {
+    this.customerRepository = customerRepository;
+    this.invoiceRepository = invoiceRepository;
+    this.invoiceSeriesRepository = invoiceSeriesRepository;
+    this.customerOrderProvider = customerOrderProvider;
+    this.cashShiftProvider = cashShiftProvider.orElse(null);
+  }
 
   public InvoiceService(
       CustomerRepository customerRepository,
       InvoiceRepository invoiceRepository,
       InvoiceSeriesRepository invoiceSeriesRepository,
       CustomerOrderProvider customerOrderProvider) {
-    this.customerRepository = customerRepository;
-    this.invoiceRepository = invoiceRepository;
-    this.invoiceSeriesRepository = invoiceSeriesRepository;
-    this.customerOrderProvider = customerOrderProvider;
+    this(customerRepository, invoiceRepository, invoiceSeriesRepository, customerOrderProvider, Optional.empty());
   }
 
   @Transactional
@@ -106,6 +118,11 @@ public class InvoiceService {
     String invoiceNumber = generateConsecutiveInvoiceNumber(branchId, invoiceTypeStr);
 
     // 5. Persist Invoice and Payments
+    Long cashShiftId =
+        cashShiftProvider != null
+            ? cashShiftProvider.findActiveShiftIdForCashier(branchId, cashierUserId).orElse(null)
+            : null;
+
     Set<InvoicePayment> paymentEntities =
         request.payments().stream()
             .map(p -> new InvoicePayment(p.method().name(), p.amount(), p.reference()))
@@ -116,6 +133,7 @@ public class InvoiceService {
         new Invoice(
             null,
             branchId,
+            cashShiftId,
             request.orderId(),
             customerId,
             invoiceNumber,
@@ -234,6 +252,7 @@ public class InvoiceService {
     return new InvoiceResponse(
         invoice.id(),
         invoice.branchId(),
+        invoice.cashShiftId(),
         invoice.orderId(),
         invoice.customerId(),
         customerName,

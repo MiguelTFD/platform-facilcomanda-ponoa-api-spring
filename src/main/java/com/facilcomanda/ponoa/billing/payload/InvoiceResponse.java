@@ -8,6 +8,7 @@ import java.util.UUID;
 public record InvoiceResponse(
     Long id,
     Long branchId,
+    Long cashShiftId,
     Long orderId,
     Long customerId,
     String customerName,

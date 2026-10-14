@@ -86,6 +86,7 @@ class InvoiceServiceTest {
           return new Invoice(
               1L,
               input.branchId(),
+              input.cashShiftId(),
               input.orderId(),
               input.customerId(),
               input.invoiceNumber(),
