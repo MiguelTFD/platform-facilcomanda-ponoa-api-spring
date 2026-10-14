@@ -12,6 +12,7 @@ import java.util.List;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -141,4 +142,53 @@ class TableController {
 
     return ResponseEntity.noContent().build();
   }
+
+  @PatchMapping("/tables/{id}/deactivate")
+  public ResponseEntity<Void> deactivateTable(
+      @PathVariable Long id,
+      @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
+      @AuthenticationPrincipal Jwt jwt) {
+
+    Long branchId = branchAccessValidator.resolveAndValidateBranchId(jwt, branchIdHeader);
+    tableService.deactivateTable(id, branchId);
+
+    return ResponseEntity.noContent().build();
+  }
+
+  @DeleteMapping("/tables/{id}")
+  public ResponseEntity<Void> deleteTable(
+      @PathVariable Long id,
+      @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
+      @AuthenticationPrincipal Jwt jwt) {
+
+    Long branchId = branchAccessValidator.resolveAndValidateBranchId(jwt, branchIdHeader);
+    tableService.deactivateTable(id, branchId);
+
+    return ResponseEntity.noContent().build();
+  }
+
+  @PatchMapping("/floors/{id}/deactivate")
+  public ResponseEntity<Void> deactivateFloor(
+      @PathVariable Long id,
+      @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
+      @AuthenticationPrincipal Jwt jwt) {
+
+    Long branchId = branchAccessValidator.resolveAndValidateBranchId(jwt, branchIdHeader);
+    tableService.deactivateFloor(id, branchId);
+
+    return ResponseEntity.noContent().build();
+  }
+
+  @DeleteMapping("/floors/{id}")
+  public ResponseEntity<Void> deleteFloor(
+      @PathVariable Long id,
+      @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
+      @AuthenticationPrincipal Jwt jwt) {
+
+    Long branchId = branchAccessValidator.resolveAndValidateBranchId(jwt, branchIdHeader);
+    tableService.deactivateFloor(id, branchId);
+
+    return ResponseEntity.noContent().build();
+  }
 }
+

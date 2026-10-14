@@ -43,6 +43,29 @@ class TableService implements RestaurantTableProvider {
   }
 
   @Transactional
+  public void deactivateFloor(Long floorId, Long branchId) {
+    floorRepository
+        .findByIdAndBranchId(floorId, branchId)
+        .orElseThrow(
+            () ->
+                new ResourceNotFoundException(
+                    "Floor " + floorId + " not found in branch " + branchId));
+
+    List<RestaurantTable> tables = tableRepository.findAllByBranchIdAndFloorId(branchId, floorId);
+    boolean hasOccupiedTables = tables.stream().anyMatch(t -> t.state() == TableState.OCCUPIED);
+    if (hasOccupiedTables) {
+      throw new IllegalStateException(
+          "Cannot deactivate floor " + floorId + " because one or more tables are currently occupied");
+    }
+
+    tableRepository.softDeleteTablesByFloor(floorId, branchId);
+    int updated = floorRepository.softDeleteFloor(floorId, branchId);
+    if (updated == 0) {
+      throw new ResourceNotFoundException("Floor " + floorId + " not found in branch " + branchId);
+    }
+  }
+
+  @Transactional
   public Long createTable(Long branchId, CreateTableRequest request) {
     floorRepository
         .findByIdAndBranchId(request.floorId(), branchId)
@@ -87,6 +110,19 @@ class TableService implements RestaurantTableProvider {
             () ->
                 new ResourceNotFoundException(
                     "Table " + tableId + " not found in branch " + branchId));
+  }
+
+  @Transactional
+  public void deactivateTable(Long tableId, Long branchId) {
+    RestaurantTable table = getTable(branchId, tableId);
+    if (table.state() == TableState.OCCUPIED) {
+      throw new IllegalStateException(
+          "Cannot deactivate table " + tableId + " while it is occupied");
+    }
+    int updated = tableRepository.softDeleteTable(tableId, branchId);
+    if (updated == 0) {
+      throw new ResourceNotFoundException("Table " + tableId + " not found in branch " + branchId);
+    }
   }
 
   @Override

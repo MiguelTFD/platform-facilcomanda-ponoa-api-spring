@@ -141,4 +141,62 @@ class TableServiceTest {
         .isInstanceOf(ResourceNotFoundException.class)
         .hasMessageContaining("Table 999 not found");
   }
+
+  @Test
+  @DisplayName("Should deactivate table successfully when AVAILABLE")
+  void shouldDeactivateTableSuccessfully() {
+    RestaurantTable table =
+        new RestaurantTable(101L, 1L, 10L, "Mesa 1", null, TableState.AVAILABLE, 4, null, null);
+    when(tableRepository.findByIdAndBranchId(101L, 1L)).thenReturn(Optional.of(table));
+    when(tableRepository.softDeleteTable(101L, 1L)).thenReturn(1);
+
+    tableService.deactivateTable(101L, 1L);
+
+    verify(tableRepository).softDeleteTable(101L, 1L);
+  }
+
+  @Test
+  @DisplayName("Should throw IllegalStateException when trying to deactivate OCCUPIED table")
+  void shouldThrowWhenDeactivatingOccupiedTable() {
+    RestaurantTable table =
+        new RestaurantTable(101L, 1L, 10L, "Mesa 1", null, TableState.OCCUPIED, 4, null, null);
+    when(tableRepository.findByIdAndBranchId(101L, 1L)).thenReturn(Optional.of(table));
+
+    assertThatThrownBy(() -> tableService.deactivateTable(101L, 1L))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("occupied");
+  }
+
+  @Test
+  @DisplayName("Should deactivate floor and its tables when no table is occupied")
+  void shouldDeactivateFloorSuccessfully() {
+    RestaurantFloor floor = new RestaurantFloor(10L, 1L, "Terraza", null, null, null);
+    when(floorRepository.findByIdAndBranchId(10L, 1L)).thenReturn(Optional.of(floor));
+
+    RestaurantTable table1 =
+        new RestaurantTable(101L, 1L, 10L, "M1", null, TableState.AVAILABLE, 4, null, null);
+    when(tableRepository.findAllByBranchIdAndFloorId(1L, 10L)).thenReturn(List.of(table1));
+    when(floorRepository.softDeleteFloor(10L, 1L)).thenReturn(1);
+
+    tableService.deactivateFloor(10L, 1L);
+
+    verify(tableRepository).softDeleteTablesByFloor(10L, 1L);
+    verify(floorRepository).softDeleteFloor(10L, 1L);
+  }
+
+  @Test
+  @DisplayName("Should throw IllegalStateException when deactivating floor with occupied tables")
+  void shouldThrowWhenDeactivatingFloorWithOccupiedTables() {
+    RestaurantFloor floor = new RestaurantFloor(10L, 1L, "Terraza", null, null, null);
+    when(floorRepository.findByIdAndBranchId(10L, 1L)).thenReturn(Optional.of(floor));
+
+    RestaurantTable tableOccupied =
+        new RestaurantTable(101L, 1L, 10L, "M1", null, TableState.OCCUPIED, 4, null, null);
+    when(tableRepository.findAllByBranchIdAndFloorId(1L, 10L)).thenReturn(List.of(tableOccupied));
+
+    assertThatThrownBy(() -> tableService.deactivateFloor(10L, 1L))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("occupied");
+  }
 }
+
