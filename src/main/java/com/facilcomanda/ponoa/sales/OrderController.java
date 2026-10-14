@@ -30,6 +30,7 @@ class OrderController {
   }
 
   @PostMapping
+  @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('MESERO', 'CAJERO', 'ADMINISTRADOR', 'EMPRESA')")
   public ResponseEntity<Void> createOrder(
       @RequestHeader("Idempotency-Key") String idempotencyKey,
       @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
@@ -71,6 +72,7 @@ class OrderController {
   }
 
   @PostMapping("/{id}/items")
+  @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('MESERO', 'CAJERO', 'ADMINISTRADOR', 'EMPRESA')")
   public ResponseEntity<Void> addItems(
       @PathVariable Long id,
       @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
@@ -84,6 +86,7 @@ class OrderController {
   }
 
   @PostMapping("/{id}/cancel")
+  @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('MESERO', 'CAJERO', 'ADMINISTRADOR', 'EMPRESA')")
   public ResponseEntity<Void> cancelOrder(
       @PathVariable Long id,
       @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,

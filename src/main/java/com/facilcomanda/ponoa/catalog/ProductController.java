@@ -18,6 +18,7 @@ class ProductController {
   }
 
   @PostMapping
+  @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('ADMINISTRADOR', 'EMPRESA')")
   public ResponseEntity<Void> createProduct(@Valid @RequestBody CreateProductRequest request) {
     Long productId = productService.createNewProduct(request);
 

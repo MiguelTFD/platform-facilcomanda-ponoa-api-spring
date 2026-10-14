@@ -37,6 +37,7 @@ class TableController {
   }
 
   @PostMapping("/floors")
+  @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('ADMINISTRADOR', 'EMPRESA')")
   public ResponseEntity<Void> createFloor(
       @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
       @AuthenticationPrincipal Jwt jwt,
@@ -69,6 +70,7 @@ class TableController {
   }
 
   @PostMapping("/tables")
+  @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('ADMINISTRADOR', 'EMPRESA')")
   public ResponseEntity<Void> createTable(
       @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
       @AuthenticationPrincipal Jwt jwt,
@@ -131,6 +133,7 @@ class TableController {
   }
 
   @PatchMapping("/tables/{id}/state")
+  @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('MESERO', 'CAJERO', 'ADMINISTRADOR', 'EMPRESA')")
   public ResponseEntity<Void> updateTableState(
       @PathVariable Long id,
       @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
@@ -144,6 +147,7 @@ class TableController {
   }
 
   @PatchMapping("/tables/{id}/deactivate")
+  @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('ADMINISTRADOR', 'EMPRESA')")
   public ResponseEntity<Void> deactivateTable(
       @PathVariable Long id,
       @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
@@ -156,6 +160,7 @@ class TableController {
   }
 
   @DeleteMapping("/tables/{id}")
+  @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('ADMINISTRADOR', 'EMPRESA')")
   public ResponseEntity<Void> deleteTable(
       @PathVariable Long id,
       @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
@@ -168,6 +173,7 @@ class TableController {
   }
 
   @PatchMapping("/floors/{id}/deactivate")
+  @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('ADMINISTRADOR', 'EMPRESA')")
   public ResponseEntity<Void> deactivateFloor(
       @PathVariable Long id,
       @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
@@ -180,6 +186,7 @@ class TableController {
   }
 
   @DeleteMapping("/floors/{id}")
+  @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('ADMINISTRADOR', 'EMPRESA')")
   public ResponseEntity<Void> deleteFloor(
       @PathVariable Long id,
       @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,

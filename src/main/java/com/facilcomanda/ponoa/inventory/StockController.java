@@ -29,6 +29,7 @@ class StockController {
   }
 
   @PostMapping
+  @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('ADMINISTRADOR', 'EMPRESA')")
   public ResponseEntity<Void> initializeStock(
       @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
       @AuthenticationPrincipal Jwt jwt,

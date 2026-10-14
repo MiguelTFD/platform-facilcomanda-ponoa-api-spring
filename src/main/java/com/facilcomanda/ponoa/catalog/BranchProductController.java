@@ -31,6 +31,7 @@ class BranchProductController {
   }
 
   @PutMapping("/products")
+  @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('ADMINISTRADOR', 'EMPRESA')")
   public ResponseEntity<Void> configureBranchProductInherited(
       @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
       @AuthenticationPrincipal Jwt jwt,
@@ -58,6 +59,7 @@ class BranchProductController {
   }
 
   @PutMapping("/{branchId}/products")
+  @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('ADMINISTRADOR', 'EMPRESA')")
   public ResponseEntity<Void> configureBranchProduct(
       @PathVariable Long branchId,
       @AuthenticationPrincipal Jwt jwt,

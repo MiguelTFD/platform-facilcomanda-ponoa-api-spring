@@ -13,6 +13,13 @@ spring:
     listener:
       simple:
         prefetch: 1
+        default-requeue-rejected: false
+        retry:
+          enabled: true
+          max-attempts: 3
+          initial-interval: 1000ms
+          multiplier: 2.0
+          max-interval: 5000ms
 
   datasource:
     url: jdbc:postgresql://${FCP_DB_HOST:localhost}:${FCP_DB_PORT:5432}/${FCP_DB_NAME:fcp_db}

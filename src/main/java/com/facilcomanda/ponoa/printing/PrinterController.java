@@ -39,6 +39,7 @@ class PrinterController {
   }
 
   @PostMapping
+  @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('ADMINISTRADOR', 'EMPRESA')")
   public ResponseEntity<Void> registerPrinter(
       @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
       @AuthenticationPrincipal Jwt jwt,
@@ -81,6 +82,7 @@ class PrinterController {
   }
 
   @PostMapping("/{id}/routes")
+  @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('ADMINISTRADOR', 'EMPRESA')")
   public ResponseEntity<Void> configureRoute(
       @PathVariable Long id,
       @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
@@ -133,6 +135,7 @@ class PrinterController {
   }
 
   @PostMapping("/kitchen/reprint")
+  @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('COCINERO', 'CAJERO', 'ADMINISTRADOR', 'EMPRESA')")
   public ResponseEntity<Map<String, Object>> reprintKitchenOrder(
       @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
       @AuthenticationPrincipal Jwt jwt,
@@ -141,12 +144,13 @@ class PrinterController {
     Long branchId = branchAccessValidator.resolveAndValidateBranchId(jwt, branchIdHeader);
     List<Long> jobIds =
         printJobService.reprintKitchenOrder(
-            branchId, request.orderId(), request.productionArea(), request.targetPrinterId());
+             branchId, request.orderId(), request.productionArea(), request.targetPrinterId());
 
     return ResponseEntity.accepted().body(Map.of("jobIds", jobIds, "reprinted", true));
   }
 
   @PostMapping("/receipts/reprint")
+  @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('CAJERO', 'ADMINISTRADOR', 'EMPRESA')")
   public ResponseEntity<Map<String, Object>> reprintReceipt(
       @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
       @AuthenticationPrincipal Jwt jwt,
@@ -165,6 +169,7 @@ class PrinterController {
   }
 
   @PostMapping("/jobs/{id}/retry")
+  @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('CAJERO', 'ADMINISTRADOR', 'EMPRESA', 'COCINERO')")
   public ResponseEntity<Map<String, Object>> retryJob(
       @PathVariable Long id,
       @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
@@ -177,6 +182,7 @@ class PrinterController {
   }
 
   @PostMapping("/pre-check")
+  @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('MESERO', 'CAJERO', 'ADMINISTRADOR', 'EMPRESA')")
   public ResponseEntity<Map<String, Object>> printPreCheck(
       @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
       @AuthenticationPrincipal Jwt jwt,
