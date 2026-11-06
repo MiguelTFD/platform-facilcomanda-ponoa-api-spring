@@ -68,6 +68,19 @@ class KitchenTicketService {
     return response;
   }
 
+  @Transactional
+  public void updateTicketStatusForOrder(
+      Long branchId, Long orderId, KitchenTicketStatus newStatus) {
+    kitchenTicketRepository
+        .findByOrderId(orderId)
+        .ifPresent(
+            ticket -> {
+              if (ticket.status() != KitchenTicketStatus.CANCELLED) {
+                updateTicketStatus(branchId, ticket.id(), newStatus);
+              }
+            });
+  }
+
   @Transactional(readOnly = true)
   public List<KitchenTicketResponse> getActiveTicketsByBranch(Long branchId) {
     return kitchenTicketRepository.findAllByBranchIdAndStatusIn(branchId, ACTIVE_STATUSES).stream()

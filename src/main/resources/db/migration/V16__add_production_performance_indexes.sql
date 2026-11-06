@@ -12,7 +12,7 @@ CREATE INDEX IF NOT EXISTS idx_customer_orders_branch_status_created
 
 -- 3. Índice parcial para órdenes activas en mesa (búsqueda ultra rápida de pedidos abiertos)
 CREATE INDEX IF NOT EXISTS idx_customer_orders_table_active 
-    ON customer_orders(branch_id, restaurant_table_id) 
+    ON customer_orders(branch_id, table_id) 
     WHERE status NOT IN ('PAID', 'CANCELLED');
 
 -- 4. Optimización de joins entre items de orden y SKU para rankings de ventas

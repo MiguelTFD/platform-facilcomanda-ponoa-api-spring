@@ -72,6 +72,30 @@ class EscPosTicketFormatter {
       String notes,
       boolean isReprint,
       boolean isAddition) {
+    return formatTicket(
+        branchId,
+        orderId,
+        documentType,
+        targetArea,
+        tableName,
+        orderType,
+        notes,
+        isReprint,
+        isAddition,
+        java.util.List.of());
+  }
+
+  public byte[] formatTicket(
+      Long branchId,
+      Long orderId,
+      PrintDocumentType documentType,
+      String targetArea,
+      String tableName,
+      String orderType,
+      String notes,
+      boolean isReprint,
+      boolean isAddition,
+      java.util.List<CustomerOrderProvider.OrderPrintItem> items) {
     try (ByteArrayOutputStream out = new ByteArrayOutputStream()) {
       out.write(INIT);
       out.write(ALIGN_CENTER);
@@ -128,7 +152,32 @@ class EscPosTicketFormatter {
       out.write("--------------------------------\n".getBytes(TICKET_CHARSET));
 
       out.write(ALIGN_LEFT);
-      out.write("Detalle enviado a produccion.\n".getBytes(TICKET_CHARSET));
+      if (items != null && !items.isEmpty()) {
+        java.util.List<CustomerOrderProvider.OrderPrintItem> filteredItems = items;
+        if (PrintDocumentType.KITCHEN_ORDER.equals(documentType)
+            && targetArea != null
+            && !targetArea.isBlank()) {
+          java.util.List<CustomerOrderProvider.OrderPrintItem> areaItems =
+              items.stream()
+                  .filter(
+                      i ->
+                          i.productionArea() != null
+                              && i.productionArea().equalsIgnoreCase(targetArea.trim()))
+                  .toList();
+          if (!areaItems.isEmpty()) {
+            filteredItems = areaItems;
+          }
+        }
+        for (CustomerOrderProvider.OrderPrintItem item : filteredItems) {
+          String itemName = item.name() != null ? item.name() : ("SKU-" + item.skuId());
+          out.write((item.quantity() + "x " + itemName + "\n").getBytes(TICKET_CHARSET));
+          if (item.comments() != null && !item.comments().isBlank()) {
+            out.write(("   > " + item.comments() + "\n").getBytes(TICKET_CHARSET));
+          }
+        }
+      } else {
+        out.write("Detalle enviado a produccion.\n".getBytes(TICKET_CHARSET));
+      }
       out.write("--------------------------------\n".getBytes(TICKET_CHARSET));
 
       out.write(FEED_AND_CUT);

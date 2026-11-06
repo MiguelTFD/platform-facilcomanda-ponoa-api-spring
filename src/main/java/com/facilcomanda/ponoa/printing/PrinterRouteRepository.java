@@ -20,10 +20,23 @@ interface PrinterRouteRepository extends CrudRepository<PrinterRoute, Long> {
       @Param("documentType") String documentType,
       @Param("productionArea") String productionArea);
 
+  @Query(
+      "SELECT * FROM printer_routes "
+          + "WHERE branch_id = :branchId "
+          + "  AND document_type = :documentType "
+          + "  AND product_id IN (:productIds)")
+  List<PrinterRoute> findMatchingRoutesByProductIds(
+      @Param("branchId") Long branchId,
+      @Param("documentType") String documentType,
+      @Param("productIds") java.util.Collection<Long> productIds);
+
   List<PrinterRoute> findAllByBranchIdAndPrinterId(Long branchId, Long printerId);
 
   boolean existsByBranchIdAndPrinterIdAndDocumentTypeAndProductionArea(
       Long branchId, Long printerId, PrintDocumentType documentType, String productionArea);
+
+  boolean existsByBranchIdAndPrinterIdAndDocumentTypeAndProductId(
+      Long branchId, Long printerId, PrintDocumentType documentType, Long productId);
 
   boolean existsByBranchIdAndPrinterIdAndDocumentType(
       Long branchId, Long printerId, PrintDocumentType documentType);

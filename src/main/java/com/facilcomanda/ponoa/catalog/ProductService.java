@@ -4,6 +4,7 @@ import com.facilcomanda.ponoa.catalog.payload.ProductDetailResponse;
 import com.facilcomanda.ponoa.catalog.payload.UpdateProductRequest;
 import com.facilcomanda.ponoa.global.exception.ResourceNotFoundException;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -19,14 +20,17 @@ class ProductService {
   private final ProductRepository productRepository;
   private final BrandRepository brandRepository;
   private final CategoryRepository categoryRepository;
+  private final SkuPresentationRepository skuPresentationRepository;
 
   ProductService(
       ProductRepository productRepository,
       BrandRepository brandRepository,
-      CategoryRepository categoryRepository) {
+      CategoryRepository categoryRepository,
+      SkuPresentationRepository skuPresentationRepository) {
     this.productRepository = productRepository;
     this.brandRepository = brandRepository;
     this.categoryRepository = categoryRepository;
+    this.skuPresentationRepository = skuPresentationRepository;
   }
 
   @Transactional
@@ -45,7 +49,11 @@ class ProductService {
                 .map(
                     sku ->
                         new SkuPresentation(
-                            null, sku.skuCode(), sku.presentationName(), sku.currentPrice()))
+                            null,
+                            sku.skuCode(),
+                            sku.presentationName(),
+                            sku.currentPrice(),
+                            sku.requiresStock() != null ? sku.requiresStock() : true))
                 .collect(Collectors.toSet());
 
     Product newProduct =
@@ -105,7 +113,12 @@ class ProductService {
                 .map(
                     s ->
                         new ProductDetailResponse.SkuItem(
-                            s.id(), s.skuCode(), s.presentationName(), s.currentPrice(), s.isActive()))
+                            s.id(),
+                            s.skuCode(),
+                            s.presentationName(),
+                            s.currentPrice(),
+                            s.isActive(),
+                            s.requiresStock() != null ? s.requiresStock() : true))
                 .toList()
             : Collections.emptyList();
 
@@ -129,27 +142,117 @@ class ProductService {
             .filter(p -> Boolean.TRUE.equals(p.isActive()))
             .orElseThrow(() -> new ResourceNotFoundException("Producto no encontrado con ID: " + id));
 
-    Set<ProductCategoryRef> newCategoryRefs =
-        request.categoryIds() == null
-            ? Collections.emptySet()
-            : request.categoryIds().stream()
-                .map(ProductCategoryRef::new)
-                .collect(Collectors.toSet());
+    if (request.brandId() != null) {
+      brandRepository
+          .findByIdActive(request.brandId())
+          .orElseThrow(
+              () ->
+                  new ResourceNotFoundException(
+                      "Marca no encontrada o inactiva con ID: " + request.brandId()));
+    }
 
-    Product updated =
-        new Product(
-            product.id(),
+    String productionArea =
+        request.productionArea() != null && !request.productionArea().isBlank()
+            ? request.productionArea().trim()
+            : (product.productionArea() != null ? product.productionArea() : "COCINA");
+
+    int updatedRows =
+        productRepository.updateProductDetails(
+            id,
             request.brandId(),
             request.name().trim(),
             request.baseDescription() != null ? request.baseDescription().trim() : null,
-            request.productionArea() != null ? request.productionArea().trim() : product.productionArea(),
-            product.isActive(),
-            product.deletedAt(),
-            product.skus(),
-            product.pictures(),
-            newCategoryRefs);
+            productionArea);
 
-    productRepository.save(updated);
+    if (updatedRows == 0) {
+      throw new ResourceNotFoundException("Producto no encontrado con ID: " + id);
+    }
+
+    if (request.categoryIds() != null) {
+      if (!request.categoryIds().isEmpty()) {
+        for (Long catId : request.categoryIds()) {
+          categoryRepository
+              .findByIdActive(catId)
+              .orElseThrow(
+                  () ->
+                      new ResourceNotFoundException(
+                          "Categoría no encontrada o inactiva con ID: " + catId));
+        }
+      }
+      productRepository.deleteProductCategories(id);
+      for (Long catId : request.categoryIds()) {
+        productRepository.insertProductCategory(id, catId);
+      }
+    }
+
+    if (request.skus() != null && !request.skus().isEmpty()) {
+      Set<Long> processedSkuIds = new HashSet<>();
+      for (UpdateProductRequest.SkuUpdateRequest skuReq : request.skus()) {
+        if (skuReq.id() != null) {
+          if (skuPresentationRepository.existsBySkuCodeAndIdNot(skuReq.skuCode().trim(), skuReq.id())) {
+            throw new IllegalArgumentException(
+                "Ya existe una presentación con el código SKU: " + skuReq.skuCode().trim());
+          }
+          int rows =
+              skuReq.requiresStock() != null
+                  ? skuPresentationRepository.updateSku(
+                      skuReq.id(),
+                      id,
+                      skuReq.skuCode().trim(),
+                      skuReq.presentationName().trim(),
+                      skuReq.currentPrice(),
+                      skuReq.isActive() != null ? skuReq.isActive() : true,
+                      skuReq.requiresStock())
+                  : skuPresentationRepository.updateSku(
+                      skuReq.id(),
+                      id,
+                      skuReq.skuCode().trim(),
+                      skuReq.presentationName().trim(),
+                      skuReq.currentPrice(),
+                      skuReq.isActive() != null ? skuReq.isActive() : true);
+          if (rows == 0) {
+            throw new ResourceNotFoundException(
+                "Presentación SKU no encontrada con ID: " + skuReq.id() + " para el producto: " + id);
+          }
+          processedSkuIds.add(skuReq.id());
+        } else {
+          if (skuPresentationRepository.existsBySkuCode(skuReq.skuCode().trim())) {
+            throw new IllegalArgumentException(
+                "Ya existe una presentación con el código SKU: " + skuReq.skuCode().trim());
+          }
+          if (skuReq.requiresStock() != null) {
+            skuPresentationRepository.insertSku(
+                id,
+                skuReq.skuCode().trim(),
+                skuReq.presentationName().trim(),
+                skuReq.currentPrice(),
+                skuReq.isActive() != null ? skuReq.isActive() : true,
+                skuReq.requiresStock());
+          } else {
+            skuPresentationRepository.insertSku(
+                id,
+                skuReq.skuCode().trim(),
+                skuReq.presentationName().trim(),
+                skuReq.currentPrice(),
+                skuReq.isActive() != null ? skuReq.isActive() : true);
+          }
+        }
+      }
+      if (!processedSkuIds.isEmpty()) {
+        skuPresentationRepository.deactivateExcludedSkus(id, processedSkuIds);
+      }
+    }
+  }
+
+  @Transactional
+  public void updateProductProductionArea(Long id, String productionArea) {
+    if (productionArea == null || productionArea.isBlank()) {
+      throw new IllegalArgumentException("El destino de impresión no puede ser nulo o vacío.");
+    }
+    int updatedRows = productRepository.updateProductionArea(id, productionArea.trim().toUpperCase());
+    if (updatedRows == 0) {
+      throw new ResourceNotFoundException("Producto no encontrado con ID: " + id);
+    }
   }
 
   @Transactional
@@ -158,5 +261,6 @@ class ProductService {
     if (rows == 0) {
       throw new ResourceNotFoundException("Producto no encontrado con ID: " + id);
     }
+    skuPresentationRepository.deactivateAllSkusByProductId(id);
   }
 }

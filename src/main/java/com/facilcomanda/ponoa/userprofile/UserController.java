@@ -99,6 +99,16 @@ class UserController {
     return ResponseEntity.ok(users);
   }
 
+  @GetMapping("/me")
+  public ResponseEntity<UserResponse> getCurrentUser(@AuthenticationPrincipal Jwt jwt) {
+    UUID callerId = UUID.fromString(jwt.getSubject());
+    boolean isEmpresa = branchAccessValidator.isEmpresa(jwt);
+    Long tokenBranchId = extractSingleBranchId(jwt);
+
+    UserResponse user = userService.getUserById(callerId, isEmpresa, tokenBranchId, callerId);
+    return ResponseEntity.ok(user);
+  }
+
   @GetMapping("/{id}")
   public ResponseEntity<UserResponse> getUserById(
       @AuthenticationPrincipal Jwt jwt,
@@ -124,6 +134,36 @@ class UserController {
     Long tokenBranchId = extractSingleBranchId(jwt);
 
     userService.updateUser(callerId, isEmpresa, tokenBranchId, id, request);
+    return ResponseEntity.noContent().build();
+  }
+
+  @org.springframework.web.bind.annotation.PutMapping("/{id}/branches")
+  @PreAuthorize("hasAnyRole('ADMINISTRADOR', 'EMPRESA')")
+  public ResponseEntity<Void> assignUserBranches(
+      @AuthenticationPrincipal Jwt jwt,
+      @PathVariable UUID id,
+      @Valid @RequestBody com.facilcomanda.ponoa.userprofile.payload.AssignUserBranchesRequest request) {
+
+    UUID callerId = UUID.fromString(jwt.getSubject());
+    boolean isEmpresa = branchAccessValidator.isEmpresa(jwt);
+    Long tokenBranchId = extractSingleBranchId(jwt);
+
+    userService.assignUserBranches(callerId, isEmpresa, tokenBranchId, id, request.branchIds());
+    return ResponseEntity.noContent().build();
+  }
+
+  @org.springframework.web.bind.annotation.PutMapping("/{id}/roles")
+  @PreAuthorize("hasAnyRole('ADMINISTRADOR', 'EMPRESA')")
+  public ResponseEntity<Void> assignUserRoles(
+      @AuthenticationPrincipal Jwt jwt,
+      @PathVariable UUID id,
+      @Valid @RequestBody com.facilcomanda.ponoa.userprofile.payload.AssignUserRolesRequest request) {
+
+    UUID callerId = UUID.fromString(jwt.getSubject());
+    boolean isEmpresa = branchAccessValidator.isEmpresa(jwt);
+    Long tokenBranchId = extractSingleBranchId(jwt);
+
+    userService.assignUserRoles(callerId, isEmpresa, tokenBranchId, id, request.roles());
     return ResponseEntity.noContent().build();
   }
 

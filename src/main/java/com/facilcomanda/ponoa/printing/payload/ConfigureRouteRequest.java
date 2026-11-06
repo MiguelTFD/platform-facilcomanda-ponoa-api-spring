@@ -5,5 +5,11 @@ import jakarta.validation.constraints.NotNull;
 
 public record ConfigureRouteRequest(
     @NotNull PrintDocumentType documentType,
-    String productionArea) {}
+    String productionArea,
+    Long productId) {
+
+  public ConfigureRouteRequest(PrintDocumentType documentType, String productionArea) {
+    this(documentType, productionArea, null);
+  }
+}
 

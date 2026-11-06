@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:15-alpine
@@ -12,6 +10,7 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres/init-keycloak-db.sql:/docker-entrypoint-initdb.d/init-keycloak-db.sql:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${FCP_DB_USER:-postgres} -d ${FCP_DB_NAME:-fcp_db}"]
@@ -43,6 +42,11 @@ services:
     environment:
       KEYCLOAK_ADMIN: ${FCP_KC_ADMIN:-admin}
       KEYCLOAK_ADMIN_PASSWORD: ${FCP_KC_PASSWORD:-admin}
+      KC_HOSTNAME_URL: ${KC_HOSTNAME_URL:-http://localhost:8080}
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/fcp_keycloak
+      KC_DB_USERNAME: ${FCP_DB_USER:-postgres}
+      KC_DB_PASSWORD: ${FCP_DB_PASSWORD:-postgres}
     command: start-dev --import-realm
     ports:
       - "8080:8080"
@@ -70,7 +74,15 @@ services:
       FCP_RABBIT_PORT: 5672
       FCP_RABBIT_USER: ${FCP_RABBIT_USER:-guest}
       FCP_RABBIT_PASSWORD: ${FCP_RABBIT_PASSWORD:-guest}
-      KEYCLOAK_ISSUER_URI: ${KEYCLOAK_ISSUER_URI:-http://keycloak:8080/realms/fcp-realm}
+      KEYCLOAK_ISSUER_URI: ${KEYCLOAK_ISSUER_URI:-http://localhost:8080/realms/fcp-realm}
+      KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/fcp-realm/protocol/openid-connect/certs
+      KEYCLOAK_SERVER_URL: http://keycloak:8080
+      KEYCLOAK_REALM: fcp-realm
+      KEYCLOAK_ADMIN_USERNAME: ${FCP_KC_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${FCP_KC_PASSWORD:-admin}
+      KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-fcp-api}
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:-}
+      JAVA_TOOL_OPTIONS: ${JAVA_TOOL_OPTIONS:-}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-*}
       TAX_API_BASE_URL: ${TAX_API_BASE_URL:-https://miapi.cloud/v1}
       TAX_API_TOKEN: ${TAX_API_TOKEN:-}
@@ -79,6 +91,8 @@ services:
       FCP_SMTP_USER: ${FCP_SMTP_USER:-}
       FCP_SMTP_PASSWORD: ${FCP_SMTP_PASSWORD:-}
     depends_on:
+      keycloak:
+        condition: service_started
       postgres:
         condition: service_healthy
       rabbitmq:

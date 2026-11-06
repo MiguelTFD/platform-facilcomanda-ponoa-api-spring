@@ -75,6 +75,46 @@
       "clientRole" : false,
       "containerId" : "fe2ddb40-264b-4aa8-9c96-9d5e25165d51",
       "attributes" : { }
+    }, {
+      "id" : "11111111-1111-1111-1111-111111111101",
+      "name" : "EMPRESA",
+      "description" : "Role for restaurant company owner",
+      "composite" : false,
+      "clientRole" : false,
+      "containerId" : "fe2ddb40-264b-4aa8-9c96-9d5e25165d51",
+      "attributes" : { }
+    }, {
+      "id" : "11111111-1111-1111-1111-111111111102",
+      "name" : "ADMINISTRADOR",
+      "description" : "Role for branch administrator",
+      "composite" : false,
+      "clientRole" : false,
+      "containerId" : "fe2ddb40-264b-4aa8-9c96-9d5e25165d51",
+      "attributes" : { }
+    }, {
+      "id" : "11111111-1111-1111-1111-111111111103",
+      "name" : "COCINERO",
+      "description" : "Role for kitchen cook",
+      "composite" : false,
+      "clientRole" : false,
+      "containerId" : "fe2ddb40-264b-4aa8-9c96-9d5e25165d51",
+      "attributes" : { }
+    }, {
+      "id" : "11111111-1111-1111-1111-111111111104",
+      "name" : "CAJERO",
+      "description" : "Role for cashier",
+      "composite" : false,
+      "clientRole" : false,
+      "containerId" : "fe2ddb40-264b-4aa8-9c96-9d5e25165d51",
+      "attributes" : { }
+    }, {
+      "id" : "11111111-1111-1111-1111-111111111105",
+      "name" : "MESERO",
+      "description" : "Role for waiter",
+      "composite" : false,
+      "clientRole" : false,
+      "containerId" : "fe2ddb40-264b-4aa8-9c96-9d5e25165d51",
+      "attributes" : { }
     } ],
     "client" : {
       "realm-management" : [ {
@@ -386,6 +426,51 @@
     } ]
   },
   "clients" : [ {
+    "id" : "c43d590e-f96f-4639-9aa5-0e5b5fce6013",
+    "clientId" : "fcp-api",
+    "name" : "FacilComanda API",
+    "enabled" : true,
+    "alwaysDisplayInConsole" : false,
+    "clientAuthenticatorType" : "client-secret",
+    "redirectUris" : [ "*" ],
+    "webOrigins" : [ "*" ],
+    "notBefore" : 0,
+    "bearerOnly" : false,
+    "consentRequired" : false,
+    "standardFlowEnabled" : true,
+    "implicitFlowEnabled" : false,
+    "directAccessGrantsEnabled" : true,
+    "serviceAccountsEnabled" : false,
+    "publicClient" : true,
+    "frontchannelLogout" : false,
+    "protocol" : "openid-connect",
+    "attributes" : {
+      "backchannel.logout.session.required" : "true",
+      "backchannel.logout.revoke.offline.tokens" : "false"
+    },
+    "authenticationFlowBindingOverrides" : { },
+    "fullScopeAllowed" : true,
+    "nodeReRegistrationTimeout" : -1,
+    "defaultClientScopes" : [ "web-origins", "acr", "roles", "profile", "email" ],
+    "optionalClientScopes" : [ "address", "phone", "offline_access", "microprofile-jwt" ],
+    "protocolMappers" : [ {
+      "id" : "5a7359d5-9d1f-4088-8a9b-505a2b7b864e",
+      "name" : "branch_id",
+      "protocol" : "openid-connect",
+      "protocolMapper" : "oidc-usermodel-attribute-mapper",
+      "consentRequired" : false,
+      "config" : {
+        "user.attribute" : "branch_id",
+        "claim.name" : "branch_id",
+        "jsonType.label" : "int",
+        "id.token.claim" : "true",
+        "access.token.claim" : "true",
+        "userinfo.token.claim" : "true",
+        "multivalued" : "false",
+        "aggregate.attrs" : "false"
+      }
+    } ]
+  }, {
     "id" : "962476f4-6b86-4020-a0fe-2cbdfafd8f0f",
     "clientId" : "account",
     "name" : "${client_account}",
@@ -1770,5 +1855,54 @@
   },
   "clientPolicies" : {
     "policies" : [ ]
-  }
+  },
+  "users" : [ {
+    "id" : "127c2fc4-ec58-4e82-ad44-0f85db14beae",
+    "username" : "ponoa@facilcomanda.com",
+    "enabled" : true,
+    "emailVerified" : true,
+    "firstName" : "Ponoa",
+    "lastName" : "Ponoa",
+    "email" : "ponoa@facilcomanda.com",
+    "credentials" : [ {
+      "type" : "password",
+      "value" : "Admin123!",
+      "temporary" : false
+    } ],
+    "realmRoles" : [ "EMPRESA", "default-roles-fcp-realm" ]
+  }, {
+    "id" : "8b30050f-0abc-4a10-bca4-40382f3345c0",
+    "username" : "migueltfd@gmail.com",
+    "enabled" : true,
+    "emailVerified" : true,
+    "firstName" : "Miguel",
+    "lastName" : "Lizarraga",
+    "email" : "migueltfd@gmail.com",
+    "credentials" : [ {
+      "type" : "password",
+      "value" : "Admin123!",
+      "temporary" : false
+    } ],
+    "attributes" : {
+      "branch_id" : [ "3" ]
+    },
+    "realmRoles" : [ "EMPRESA", "default-roles-fcp-realm" ]
+  }, {
+    "id" : "2609c82e-c9d0-4adc-9e2e-e1165490250f",
+    "username" : "adminponoa@facilcomanda.com",
+    "enabled" : true,
+    "emailVerified" : true,
+    "firstName" : "admin",
+    "lastName" : "test",
+    "email" : "adminponoa@facilcomanda.com",
+    "attributes" : {
+      "branch_id" : [ "3" ]
+    },
+    "credentials" : [ {
+      "type" : "password",
+      "value" : "Admin123!",
+      "temporary" : false
+    } ],
+    "realmRoles" : [ "ADMINISTRADOR", "default-roles-fcp-realm" ]
+  } ]
 }

@@ -31,6 +31,9 @@ CREATE TABLE invoice_series (
 CREATE INDEX idx_invoice_series_branch_type ON invoice_series(branch_id, invoice_type);
 
 -- 3. Tabla de Comprobantes de Pago (Invoices)
+DROP TRIGGER IF EXISTS update_invoices_modtime ON invoices;
+DROP TABLE IF EXISTS invoices CASCADE;
+
 CREATE TABLE invoices (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   branch_id BIGINT NOT NULL REFERENCES branches(id) ON DELETE RESTRICT,

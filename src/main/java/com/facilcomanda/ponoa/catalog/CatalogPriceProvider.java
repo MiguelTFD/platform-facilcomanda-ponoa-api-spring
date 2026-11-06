@@ -22,4 +22,19 @@ public interface CatalogPriceProvider {
    * Returns presentation names for the requested SKUs.
    */
   Map<Long, String> getSkuNames(Set<Long> skuIds);
+
+  /**
+   * Returns whether each SKU requires stock control (true by default).
+   * Non-stockable SKUs (e.g. made-to-order dishes) return false.
+   */
+  default Map<Long, Boolean> getRequiresStockForSkus(Set<Long> skuIds) {
+    return Map.of();
+  }
+
+  /**
+   * Returns the parent product ID for each requested SKU.
+   */
+  default Map<Long, Long> getProductIdsForSkus(Set<Long> skuIds) {
+    return Map.of();
+  }
 }

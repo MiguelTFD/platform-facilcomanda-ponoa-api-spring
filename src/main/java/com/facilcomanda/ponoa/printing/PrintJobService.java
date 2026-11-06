@@ -5,7 +5,9 @@ import com.facilcomanda.ponoa.global.exception.ResourceNotFoundException;
 import com.facilcomanda.ponoa.printing.payload.PrintJobMessage;
 import com.facilcomanda.ponoa.printing.payload.RegisterPrinterRequest;
 import com.facilcomanda.ponoa.sales.CustomerOrderProvider;
+import com.facilcomanda.ponoa.printing.payload.PrinterFailureAlert;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -13,6 +15,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
@@ -20,6 +24,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 class PrintJobService {
+
+  private static final Logger log = LoggerFactory.getLogger(PrintJobService.class);
 
   public static final long REPRINT_COOLDOWN_SECONDS = 60;
 
@@ -29,6 +35,7 @@ class PrintJobService {
   private final RabbitTemplate rabbitTemplate;
   private final CatalogPriceProvider catalogPriceProvider;
   private final CustomerOrderProvider customerOrderProvider;
+  private final PrinterAlertPublisher alertPublisher;
 
   PrintJobService(
       PrinterDeviceRepository printerDeviceRepository,
@@ -36,13 +43,15 @@ class PrintJobService {
       PrintJobRepository printJobRepository,
       RabbitTemplate rabbitTemplate,
       CatalogPriceProvider catalogPriceProvider,
-      CustomerOrderProvider customerOrderProvider) {
+      CustomerOrderProvider customerOrderProvider,
+      PrinterAlertPublisher alertPublisher) {
     this.printerDeviceRepository = printerDeviceRepository;
     this.printerRouteRepository = printerRouteRepository;
     this.printJobRepository = printJobRepository;
     this.rabbitTemplate = rabbitTemplate;
     this.catalogPriceProvider = catalogPriceProvider;
     this.customerOrderProvider = customerOrderProvider;
+    this.alertPublisher = alertPublisher;
   }
 
   @Transactional
@@ -85,57 +94,60 @@ class PrintJobService {
           "Printer with name " + request.name() + " already exists in branch " + branchId);
     }
 
-    PrinterDevice updated =
-        new PrinterDevice(
-            device.id(),
-            device.branchId(),
-            request.name().trim(),
-            request.ipAddress().trim(),
-            request.port() != null ? request.port() : device.port(),
-            request.connectionType() != null ? request.connectionType().trim() : device.connectionType(),
-            request.terminalCode() != null ? request.terminalCode().trim() : device.terminalCode(),
-            request.isActive() != null ? request.isActive() : device.isActive(),
-            device.createdAt(),
-            OffsetDateTime.now());
-
-    printerDeviceRepository.save(updated);
+    printerDeviceRepository.updatePrinterDetails(
+        printerId,
+        branchId,
+        request.name().trim(),
+        request.ipAddress().trim(),
+        request.port() != null ? request.port() : device.port(),
+        request.connectionType() != null ? request.connectionType().trim() : device.connectionType(),
+        request.terminalCode() != null ? request.terminalCode().trim() : device.terminalCode(),
+        request.isActive() != null ? request.isActive() : device.isActive());
   }
 
   @Transactional
   public void deletePrinter(Long branchId, Long printerId) {
-    PrinterDevice device =
-        printerDeviceRepository
-            .findByIdAndBranchId(printerId, branchId)
-            .orElseThrow(
-                () ->
-                    new ResourceNotFoundException(
-                        "Printer " + printerId + " not found in branch " + branchId));
-
-    PrinterDevice updated =
-        new PrinterDevice(
-            device.id(),
-            device.branchId(),
-            device.name(),
-            device.ipAddress(),
-            device.port(),
-            device.connectionType(),
-            device.terminalCode(),
-            false,
-            device.createdAt(),
-            OffsetDateTime.now());
-
-    printerDeviceRepository.save(updated);
-  }
-
-  @Transactional
-  public void configureRoute(
-      Long branchId, Long printerId, PrintDocumentType documentType, String productionArea) {
     printerDeviceRepository
         .findByIdAndBranchId(printerId, branchId)
         .orElseThrow(
             () ->
                 new ResourceNotFoundException(
                     "Printer " + printerId + " not found in branch " + branchId));
+
+    printerDeviceRepository.softDeletePrinter(printerId, branchId);
+  }
+
+  @Transactional
+  public void configureRoute(
+      Long branchId, Long printerId, PrintDocumentType documentType, String productionArea) {
+    configureRoute(branchId, printerId, documentType, productionArea, null);
+  }
+
+  @Transactional
+  public void configureRoute(
+      Long branchId,
+      Long printerId,
+      PrintDocumentType documentType,
+      String productionArea,
+      Long productId) {
+    printerDeviceRepository
+        .findByIdAndBranchId(printerId, branchId)
+        .orElseThrow(
+            () ->
+                new ResourceNotFoundException(
+                    "Printer " + printerId + " not found in branch " + branchId));
+
+    if (productId != null) {
+      if (printerRouteRepository.existsByBranchIdAndPrinterIdAndDocumentTypeAndProductId(
+          branchId, printerId, documentType, productId)) {
+        return; // Already configured for this product
+      }
+      PrinterRoute route =
+          new PrinterRoute(
+              null, branchId, printerId, documentType, productionArea, productId, null);
+      printerRouteRepository.save(route);
+      return;
+    }
 
     if (printerRouteRepository.existsByBranchIdAndPrinterIdAndDocumentTypeAndProductionArea(
         branchId, printerId, documentType, productionArea)) {
@@ -241,6 +253,75 @@ class PrintJobService {
               PrintingQueueConfig.PRINTING_EXCHANGE, routingKey, message);
         } catch (DuplicateKeyException ex) {
           // Idempotent duplicate safely ignored
+        }
+      }
+    }
+
+    // Also route any individual product-level printer routes if configured
+    if (skuIds != null && !skuIds.isEmpty()) {
+      Map<Long, Long> productIdMap = catalogPriceProvider.getProductIdsForSkus(skuIds);
+      if (productIdMap != null && !productIdMap.isEmpty()) {
+        Set<Long> productIds = new HashSet<>(productIdMap.values());
+        List<PrinterRoute> productRoutes =
+            printerRouteRepository.findMatchingRoutesByProductIds(
+                branchId, PrintDocumentType.KITCHEN_ORDER.name(), productIds);
+        if (productRoutes != null) {
+          for (PrinterRoute route : productRoutes) {
+            PrinterDevice printer =
+                printerDeviceRepository
+                    .findByIdAndBranchId(route.printerId(), branchId)
+                    .filter(p -> Boolean.TRUE.equals(p.isActive()))
+                    .orElse(null);
+            if (printer == null) {
+              continue;
+            }
+            String area =
+                route.productionArea() != null ? route.productionArea() : "PRODUCT-" + route.productId();
+            String idempotencyKey =
+                "ORDER-" + orderId + "-PROD-" + route.productId() + "-PRINTER-" + printer.id();
+            if (printJobRepository.existsByIdempotencyKey(
+                branchId,
+                orderId,
+                printer.id(),
+                PrintDocumentType.KITCHEN_ORDER.name(),
+                idempotencyKey)) {
+              continue;
+            }
+            PrintJob job =
+                new PrintJob(
+                    null,
+                    branchId,
+                    printer.id(),
+                    orderId,
+                    PrintDocumentType.KITCHEN_ORDER,
+                    idempotencyKey,
+                    PrintJobStatus.PENDING,
+                    null,
+                    0,
+                    null,
+                    null);
+            try {
+              PrintJob savedJob = printJobRepository.save(job);
+              PrintJobMessage message =
+                  new PrintJobMessage(
+                      savedJob.id(),
+                      branchId,
+                      printer.id(),
+                      orderId,
+                      PrintDocumentType.KITCHEN_ORDER,
+                      printer.ipAddress(),
+                      printer.port(),
+                      area,
+                      tableName,
+                      orderType,
+                      notes);
+              String routingKey = "printing.branch." + branchId;
+              rabbitTemplate.convertAndSend(
+                  PrintingQueueConfig.PRINTING_EXCHANGE, routingKey, message);
+            } catch (DuplicateKeyException ex) {
+              // Idempotent duplicate safely ignored
+            }
+          }
         }
       }
     }
@@ -501,7 +582,7 @@ class PrintJobService {
     if (status != null) {
       return printJobRepository.findAllByBranchIdAndStatus(branchId, status);
     }
-    return printJobRepository.findAllByBranchIdAndStatus(branchId, PrintJobStatus.PENDING);
+    return printJobRepository.findAllByBranchId(branchId);
   }
 
   private void validateReprintCooldown(
@@ -912,6 +993,51 @@ class PrintJobService {
     rabbitTemplate.convertAndSend(PrintingQueueConfig.PRINTING_EXCHANGE, routingKey, message);
 
     return savedJob.id();
+  }
+
+  @Transactional
+  public void acknowledgePrintJob(
+      Long branchId, Long jobId, PrintJobStatus status, String errorMessage) {
+    PrintJob job =
+        printJobRepository
+            .findByIdAndBranchId(jobId, branchId)
+            .orElseThrow(
+                () ->
+                    new ResourceNotFoundException(
+                        "PrintJob " + jobId + " not found in branch " + branchId));
+
+    if (PrintJobStatus.COMPLETED.equals(job.status())) {
+      log.info("Print job {} in branch {} is already COMPLETED. Ignoring ACK.", jobId, branchId);
+      return;
+    }
+
+    if (PrintJobStatus.COMPLETED.equals(status)) {
+      printJobRepository.updateJobStatus(jobId, branchId, PrintJobStatus.COMPLETED.name(), null);
+    } else if (PrintJobStatus.FAILED.equals(status)) {
+      printJobRepository.updateJobStatus(
+          jobId, branchId, PrintJobStatus.FAILED.name(), errorMessage);
+
+      PrinterDevice printer =
+          printerDeviceRepository.findByIdAndBranchId(job.printerId(), branchId).orElse(null);
+
+      PrinterFailureAlert alert =
+          new PrinterFailureAlert(
+              branchId,
+              job.id(),
+              job.orderId(),
+              job.documentType() != null ? job.documentType().name() : "UNKNOWN",
+              printer != null ? printer.ipAddress() : "UNKNOWN",
+              printer != null ? printer.port() : 9100,
+              null,
+              errorMessage != null ? errorMessage : "Falla reportada por el agente de impresión local",
+              "Verifique papel, energía o conexión física de la impresora en la sucursal.",
+              Instant.now());
+
+      alertPublisher.publishPrinterFailure(alert);
+    } else {
+      throw new IllegalArgumentException(
+          "Invalid ACK status: " + status + ". Expected COMPLETED or FAILED.");
+    }
   }
 }
 

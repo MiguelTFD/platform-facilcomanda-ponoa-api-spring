@@ -11,6 +11,7 @@ public record RestaurantTable(
     @Id Long id,
     @Column("branch_id") Long branchId,
     @Column("floor_id") Long floorId,
+    @Column("zone_id") Long zoneId,
     String name,
     String description,
     TableState state,
@@ -27,12 +28,77 @@ public record RestaurantTable(
       Long id,
       Long branchId,
       Long floorId,
+      Long zoneId,
       String name,
       String description,
       TableState state,
       Integer chairs,
       OffsetDateTime createdAt,
       OffsetDateTime updatedAt) {
-    this(id, branchId, floorId, name, description, state, chairs, true, null, createdAt, updatedAt);
+    this(
+        id,
+        branchId,
+        floorId,
+        zoneId,
+        name,
+        description,
+        state,
+        chairs,
+        true,
+        null,
+        createdAt,
+        updatedAt);
+  }
+
+  public RestaurantTable(
+      Long id,
+      Long branchId,
+      Long floorId,
+      String name,
+      String description,
+      TableState state,
+      Integer chairs,
+      Boolean isActive,
+      OffsetDateTime deletedAt,
+      OffsetDateTime createdAt,
+      OffsetDateTime updatedAt) {
+    this(
+        id,
+        branchId,
+        floorId,
+        null,
+        name,
+        description,
+        state,
+        chairs,
+        isActive,
+        deletedAt,
+        createdAt,
+        updatedAt);
+  }
+
+  public RestaurantTable(
+      Long id,
+      Long branchId,
+      Long floorId,
+      String name,
+      String description,
+      TableState state,
+      Integer chairs,
+      OffsetDateTime createdAt,
+      OffsetDateTime updatedAt) {
+    this(
+        id,
+        branchId,
+        floorId,
+        null,
+        name,
+        description,
+        state,
+        chairs,
+        true,
+        null,
+        createdAt,
+        updatedAt);
   }
 }

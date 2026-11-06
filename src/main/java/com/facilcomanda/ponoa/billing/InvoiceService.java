@@ -9,11 +9,15 @@ import com.facilcomanda.ponoa.sales.CustomerOrderProvider;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,6 +30,7 @@ public class InvoiceService {
   private final CustomerOrderProvider customerOrderProvider;
   private final CashShiftProvider cashShiftProvider;
 
+  @Autowired
   public InvoiceService(
       CustomerRepository customerRepository,
       InvoiceRepository invoiceRepository,
@@ -187,8 +192,31 @@ public class InvoiceService {
 
   @Transactional(readOnly = true)
   public List<InvoiceResponse> listInvoices(Long branchId) {
-    return invoiceRepository.findAllByBranchId(branchId).stream()
-        .map(this::loadFullResponse)
+    List<Invoice> invoices = invoiceRepository.findAllByBranchId(branchId);
+    if (invoices.isEmpty()) {
+      return Collections.emptyList();
+    }
+
+    Set<Long> customerIds =
+        invoices.stream()
+            .map(Invoice::customerId)
+            .filter(Objects::nonNull)
+            .collect(Collectors.toSet());
+
+    Map<Long, Customer> customerMap = new HashMap<>();
+    if (!customerIds.isEmpty()) {
+      customerRepository.findAllById(customerIds).forEach(c -> customerMap.put(c.id(), c));
+    }
+
+    return invoices.stream()
+        .map(
+            inv -> {
+              Customer c = inv.customerId() != null ? customerMap.get(inv.customerId()) : null;
+              String customerName = c != null ? c.name() : null;
+              String customerDocType = c != null ? c.identityDocumentType() : null;
+              String customerDocNum = c != null ? c.identityDocumentNumber() : null;
+              return toResponse(inv, customerName, customerDocType, customerDocNum);
+            })
         .toList();
   }
 

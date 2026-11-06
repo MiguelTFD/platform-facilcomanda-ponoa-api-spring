@@ -12,4 +12,19 @@ public record PrinterRoute(
     @Column("printer_id") Long printerId,
     @Column("document_type") PrintDocumentType documentType,
     @Column("production_area") String productionArea,
-    @Column("created_at") OffsetDateTime createdAt) {}
+    @Column("product_id") Long productId,
+    @Column("created_at") OffsetDateTime createdAt) {
+
+  @org.springframework.data.annotation.PersistenceCreator
+  public PrinterRoute {}
+
+  public PrinterRoute(
+      Long id,
+      Long branchId,
+      Long printerId,
+      PrintDocumentType documentType,
+      String productionArea,
+      OffsetDateTime createdAt) {
+    this(id, branchId, printerId, documentType, productionArea, null, createdAt);
+  }
+}

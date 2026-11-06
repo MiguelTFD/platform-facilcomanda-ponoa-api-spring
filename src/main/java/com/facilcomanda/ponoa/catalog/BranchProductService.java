@@ -102,4 +102,41 @@ class BranchProductService implements CatalogPriceProvider {
 
     return nameMap;
   }
+
+  @Override
+  @Transactional(readOnly = true)
+  public Map<Long, Boolean> getRequiresStockForSkus(Set<Long> skuIds) {
+    if (skuIds == null || skuIds.isEmpty()) {
+      return Map.of();
+    }
+
+    List<SkuRequiresStockView> views = branchProductRepository.findRequiresStockBySkuIds(skuIds);
+
+    Map<Long, Boolean> requiresStockMap = new HashMap<>();
+    for (SkuRequiresStockView view : views) {
+      requiresStockMap.put(
+          view.skuId(), view.requiresStock() != null ? view.requiresStock() : true);
+    }
+
+    return requiresStockMap;
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public Map<Long, Long> getProductIdsForSkus(Set<Long> skuIds) {
+    if (skuIds == null || skuIds.isEmpty()) {
+      return Map.of();
+    }
+
+    List<SkuProductIdView> views = branchProductRepository.findProductIdsBySkuIds(skuIds);
+
+    Map<Long, Long> productIdMap = new HashMap<>();
+    for (SkuProductIdView view : views) {
+      if (view.productId() != null) {
+        productIdMap.put(view.skuId(), view.productId());
+      }
+    }
+
+    return productIdMap;
+  }
 }

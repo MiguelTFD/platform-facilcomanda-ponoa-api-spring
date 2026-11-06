@@ -71,18 +71,12 @@ class BranchService implements BranchProvider {
       throw new DuplicateKeyException("Branch with name " + request.name() + " already exists.");
     }
 
-    Branch updated =
-        new Branch(
-            branch.id(),
-            request.name().trim(),
-            branch.code(),
-            request.address() != null ? request.address().trim() : null,
-            request.phoneNumber() != null ? request.phoneNumber().trim() : null,
-            request.isActive() != null ? request.isActive() : branch.isActive(),
-            branch.createdAt(),
-            java.time.OffsetDateTime.now());
-
-    branchRepository.save(updated);
+    branchRepository.updateBranchDetails(
+        id,
+        request.name().trim(),
+        request.address() != null ? request.address().trim() : null,
+        request.phoneNumber() != null ? request.phoneNumber().trim() : null,
+        request.isActive() != null ? request.isActive() : branch.isActive());
   }
 
   @Transactional(readOnly = true)

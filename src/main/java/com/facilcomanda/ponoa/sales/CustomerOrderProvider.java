@@ -33,7 +33,27 @@ public interface CustomerOrderProvider {
       String tableName,
       String orderType,
       String notes,
-      Set<Long> skuIds) {}
+      Set<Long> skuIds,
+      List<OrderPrintItem> items) {
+
+    public OrderPrintSummary(
+        Long orderId,
+        Long branchId,
+        Long tableId,
+        String tableName,
+        String orderType,
+        String notes,
+        Set<Long> skuIds) {
+      this(orderId, branchId, tableId, tableName, orderType, notes, skuIds, List.of());
+    }
+  }
+
+  record OrderPrintItem(
+      Long skuId,
+      String name,
+      Integer quantity,
+      String productionArea,
+      String comments) {}
 
   record OrderPreCheckSummary(
       Long orderId,

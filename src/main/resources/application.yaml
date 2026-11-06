@@ -37,7 +37,7 @@ spring:
       connection-timeout: 5000
       idle-timeout: 300000
       max-lifetime: 1800000
-      leak-detection-threshold: 2000
+      leak-detection-threshold: 15000
 
   flyway:
     enabled: true
@@ -49,7 +49,7 @@ spring:
       resourceserver:
         jwt:
           issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8080/realms/fcp-realm}
-          jwk-set-uri: ${spring.security.oauth2.resourceserver.jwt.issuer-uri}/protocol/openid-connect/certs
+          jwk-set-uri: ${KEYCLOAK_JWK_SET_URI:http://keycloak:8080/realms/fcp-realm/protocol/openid-connect/certs}
 
 
   mail:
@@ -78,6 +78,8 @@ management:
     prometheus:
       enabled: true
   health:
+    mail:
+      enabled: false
     livenessstate:
       enabled: true
     readinessstate:
@@ -98,8 +100,18 @@ app:
   security:
     cors:
       allowed-origins: ${CORS_ALLOWED_ORIGINS:*}
+  printing:
+    mode: ${APP_PRINTING_MODE:HYBRID}
   tax-api:
     base-url: ${TAX_API_BASE_URL:https://miapi.cloud/v1}
     token: ${TAX_API_TOKEN:}
     connect-timeout-ms: 2000
     read-timeout-ms: 3000
+  keycloak:
+    server-url: ${KEYCLOAK_SERVER_URL:http://localhost:8080}
+    realm: ${KEYCLOAK_REALM:fcp-realm}
+    admin-username: ${KEYCLOAK_ADMIN_USERNAME:admin}
+    admin-password: ${KEYCLOAK_ADMIN_PASSWORD:admin}
+    admin-realm: ${KEYCLOAK_ADMIN_REALM:master}
+    admin-client-id: ${KEYCLOAK_ADMIN_CLIENT_ID:admin-cli}
+

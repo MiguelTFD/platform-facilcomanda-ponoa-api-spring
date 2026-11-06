@@ -3,6 +3,7 @@ package com.facilcomanda.ponoa.auth;
 import com.facilcomanda.ponoa.auth.payload.LoginRequest;
 import com.facilcomanda.ponoa.auth.payload.RefreshTokenRequest;
 import com.facilcomanda.ponoa.auth.payload.TokenResponse;
+import com.facilcomanda.ponoa.global.exception.IdentityProviderUnavailableException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -25,12 +26,13 @@ public class AuthService {
   private final String clientSecret;
 
   public AuthService(
-      @Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri:http://localhost:8080/realms/fcp-realm}")
-          String issuerUri,
+      @Value("${app.keycloak.server-url:http://localhost:8080}") String serverUrl,
+      @Value("${app.keycloak.realm:fcp-realm}") String realm,
       @Value("${app.auth.client-id:fcp-api}") String clientId,
       @Value("${app.auth.client-secret:}") String clientSecret) {
 
-    this.tokenUrl = issuerUri + "/protocol/openid-connect/token";
+    String base = serverUrl.endsWith("/") ? serverUrl.substring(0, serverUrl.length() - 1) : serverUrl;
+    this.tokenUrl = base + "/realms/" + realm + "/protocol/openid-connect/token";
     this.clientId = clientId;
     this.clientSecret = clientSecret;
 
@@ -65,7 +67,7 @@ public class AuthService {
       throw new BadCredentialsException("Credenciales inválidas. Por favor verifique su correo y contraseña.");
     } catch (Exception e) {
       log.error("Error communicating with Keycloak token endpoint: {}", e.getMessage(), e);
-      throw new IllegalStateException("Servicio de autenticación no disponible temporalmente. Intente nuevamente.");
+      throw new IdentityProviderUnavailableException("Servicio de autenticación no disponible temporalmente. Intente nuevamente.", e);
     }
   }
 
@@ -91,7 +93,7 @@ public class AuthService {
       throw new BadCredentialsException("El refresh token ha expirado o es inválido. Inicie sesión nuevamente.");
     } catch (Exception e) {
       log.error("Error refreshing token with Keycloak: {}", e.getMessage(), e);
-      throw new IllegalStateException("Servicio de autenticación no disponible temporalmente. Intente nuevamente.");
+      throw new IdentityProviderUnavailableException("Servicio de autenticación no disponible temporalmente. Intente nuevamente.", e);
     }
   }
 }

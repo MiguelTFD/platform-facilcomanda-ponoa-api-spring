@@ -34,10 +34,20 @@ interface BranchProductRepository extends CrudRepository<BranchProduct, Long> {
   List<SkuNameView> findPresentationNamesBySkuIds(@Param("skuIds") Collection<Long> skuIds);
 
   @Query(
+      "SELECT id as sku_id, COALESCE(requires_stock, TRUE) as requires_stock "
+          + "FROM sku_presentations WHERE id IN (:skuIds)")
+  List<SkuRequiresStockView> findRequiresStockBySkuIds(@Param("skuIds") Collection<Long> skuIds);
+
+  @Query("SELECT id as sku_id, product_id FROM sku_presentations WHERE id IN (:skuIds)")
+  List<SkuProductIdView> findProductIdsBySkuIds(@Param("skuIds") Collection<Long> skuIds);
+
+  @Query(
       "SELECT bp.id as id, :branchId as branch_id, sp.id as sku_id, sp.sku_code as sku_code, "
           + "p.name as product_name, sp.presentation_name as presentation_name, "
           + "COALESCE(bp.price, sp.current_price) as price, "
-          + "COALESCE(bp.is_available, TRUE) as is_available "
+          + "COALESCE(bp.is_available, TRUE) as is_available, "
+          + "COALESCE(p.production_area, 'COCINA') as production_area, "
+          + "COALESCE(sp.requires_stock, TRUE) as requires_stock "
           + "FROM sku_presentations sp "
           + "JOIN products p ON sp.product_id = p.id "
           + "LEFT JOIN branch_products bp ON bp.sku_id = sp.id AND bp.branch_id = :branchId "
@@ -64,6 +74,10 @@ record SkuProductionAreaView(Long skuId, String productionArea) {}
 
 record SkuNameView(Long skuId, String presentationName) {}
 
+record SkuRequiresStockView(Long skuId, Boolean requiresStock) {}
+
+record SkuProductIdView(Long skuId, Long productId) {}
+
 record BranchProductDetailedView(
     Long id,
     Long branchId,
@@ -72,4 +86,32 @@ record BranchProductDetailedView(
     String productName,
     String presentationName,
     BigDecimal price,
-    Boolean isAvailable) {}
+    Boolean isAvailable,
+    String productionArea,
+    Boolean requiresStock) {
+
+  @org.springframework.data.annotation.PersistenceCreator
+  BranchProductDetailedView {}
+
+  BranchProductDetailedView(
+      Long id,
+      Long branchId,
+      Long skuId,
+      String skuCode,
+      String productName,
+      String presentationName,
+      BigDecimal price,
+      Boolean isAvailable) {
+    this(
+        id,
+        branchId,
+        skuId,
+        skuCode,
+        productName,
+        presentationName,
+        price,
+        isAvailable,
+        "COCINA",
+        true);
+  }
+}

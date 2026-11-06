@@ -13,13 +13,37 @@ public record SkuPresentation(
     @Column("sku_code") String skuCode,
     @Column("presentation_name") String presentationName,
     @Column("current_price") BigDecimal currentPrice,
+    @Column("requires_stock") Boolean requiresStock,
     @Column("is_active") Boolean isActive,
     @Column("deleted_at") OffsetDateTime deletedAt) {
 
   @PersistenceCreator
-  public SkuPresentation {}
+  public SkuPresentation {
+    if (requiresStock == null) {
+      requiresStock = true;
+    }
+  }
+
+  public SkuPresentation(
+      Long id,
+      String skuCode,
+      String presentationName,
+      BigDecimal currentPrice,
+      Boolean isActive,
+      OffsetDateTime deletedAt) {
+    this(id, skuCode, presentationName, currentPrice, true, isActive, deletedAt);
+  }
+
+  public SkuPresentation(
+      Long id,
+      String skuCode,
+      String presentationName,
+      BigDecimal currentPrice,
+      Boolean requiresStock) {
+    this(id, skuCode, presentationName, currentPrice, requiresStock != null ? requiresStock : true, true, null);
+  }
 
   public SkuPresentation(Long id, String skuCode, String presentationName, BigDecimal currentPrice) {
-    this(id, skuCode, presentationName, currentPrice, true, null);
+    this(id, skuCode, presentationName, currentPrice, true, true, null);
   }
 }

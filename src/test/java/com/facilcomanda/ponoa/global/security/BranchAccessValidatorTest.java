@@ -114,4 +114,32 @@ class BranchAccessValidatorTest {
 
     assertThat(branchId).isEqualTo(42L);
   }
+
+  @Test
+  @DisplayName("Should allow user assigned to multiple branches in DB to access any of their branches")
+  void shouldAllowAccessToMultipleBranchesFromResolver() {
+    UUID userId = UUID.randomUUID();
+    UserBranchResolver multiBranchResolver =
+        new UserBranchResolver() {
+          @Override
+          public Optional<Long> findBranchIdForUser(UUID id) {
+            return id.equals(userId) ? Optional.of(10L) : Optional.empty();
+          }
+
+          @Override
+          public List<Long> findBranchIdsForUser(UUID id) {
+            return id.equals(userId) ? List.of(10L, 25L, 30L) : List.of();
+          }
+        };
+    BranchAccessValidator resolverValidator =
+        new BranchAccessValidator(Optional.of(multiBranchResolver));
+
+    // Even if token only has primary branch_id = 10, DB resolver grants access to branch 25 and 30
+    Jwt jwt = createJwtWithClaims(Map.of("sub", userId.toString(), "branch_id", 10L));
+
+    assertThat(resolverValidator.resolveAndValidateBranchId(jwt, 25L)).isEqualTo(25L);
+    assertThat(resolverValidator.resolveAndValidateBranchId(jwt, 30L)).isEqualTo(30L);
+    assertThatThrownBy(() -> resolverValidator.resolveAndValidateBranchId(jwt, 99L))
+        .isInstanceOf(AccessDeniedException.class);
+  }
 }

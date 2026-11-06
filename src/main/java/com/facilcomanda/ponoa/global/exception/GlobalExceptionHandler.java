@@ -59,6 +59,18 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     return problemDetail;
   }
 
+  @ExceptionHandler(IdentityProviderUnavailableException.class)
+  public ProblemDetail handleIdentityProviderUnavailable(IdentityProviderUnavailableException ex) {
+    ProblemDetail problemDetail =
+        ProblemDetail.forStatusAndDetail(
+            HttpStatus.BAD_GATEWAY,
+            "Error de comunicación o autenticación con el proveedor de identidades: " + ex.getMessage());
+    problemDetail.setTitle("Proveedor de Identidades No Disponible");
+    problemDetail.setType(URI.create("https://api.facilcomanda.com/errors/identity-provider-unavailable"));
+    problemDetail.setProperty("timestamp", Instant.now());
+    return problemDetail;
+  }
+
   @ExceptionHandler(IllegalStateException.class)
   public ProblemDetail handleIllegalState(IllegalStateException ex) {
     ProblemDetail problemDetail =

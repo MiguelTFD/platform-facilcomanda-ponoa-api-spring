@@ -21,5 +21,16 @@ public record ProductDetailResponse(
       String skuCode,
       String presentationName,
       BigDecimal currentPrice,
-      Boolean isActive) {}
+      Boolean isActive,
+      Boolean requiresStock) {
+
+    public SkuItem(
+        Long id,
+        String skuCode,
+        String presentationName,
+        BigDecimal currentPrice,
+        Boolean isActive) {
+      this(id, skuCode, presentationName, currentPrice, isActive, true);
+    }
+  }
 }

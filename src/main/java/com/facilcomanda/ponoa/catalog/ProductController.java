@@ -56,6 +56,15 @@ class ProductController {
     return ResponseEntity.noContent().build();
   }
 
+  @PatchMapping("/{id}/production-area")
+  @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('ADMINISTRADOR', 'EMPRESA')")
+  public ResponseEntity<Void> updateProductProductionArea(
+      @PathVariable Long id,
+      @Valid @RequestBody com.facilcomanda.ponoa.catalog.payload.UpdateProductProductionAreaRequest request) {
+    productService.updateProductProductionArea(id, request.productionArea());
+    return ResponseEntity.noContent().build();
+  }
+
   @DeleteMapping("/{id}")
   @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('ADMINISTRADOR', 'EMPRESA')")
   public ResponseEntity<Void> deleteProduct(@PathVariable Long id) {

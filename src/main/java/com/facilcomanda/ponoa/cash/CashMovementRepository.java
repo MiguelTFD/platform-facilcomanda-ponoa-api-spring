@@ -23,7 +23,7 @@ interface CashMovementRepository extends CrudRepository<CashMovement, Long> {
           + "WHERE cm.type = 'EXPENSE' "
           + "  AND (:branchId IS NULL OR cs.branch_id = :branchId) "
           + "  AND cm.created_at >= :from AND cm.created_at <= :to "
-          + "ORDER BY cm.created_at DESC")
+          + "ORDER BY cm.created_at DESC LIMIT 200")
   List<ExpenseView> findExpenses(
       @Param("branchId") Long branchId,
       @Param("from") OffsetDateTime from,

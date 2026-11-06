@@ -240,6 +240,10 @@ El siguiente diagrama y pasos representan el ciclo de vida completo de un restau
 4. **Configurar Impresoras Térmicas:**
    * Registrar hardware con su IP local: `POST /api/v1/printers` (ej. IP `192.168.1.200`, puerto `9100`).
    * Configurar enrutamiento: `POST /api/v1/printers/{id}/routes` (vincular `KITCHEN_ORDER` con el área `COCINA` o `BARRA`).
+5. **Crear y Aprovisionar Personal (Meseros, Cajeros, Cocineros, Administradores):**
+   * El usuario `EMPRESA` o `ADMINISTRADOR` llama a `POST /api/v1/users/admin` o `POST /api/v1/users/staff` enviando email, datos personales, rol y `password`.
+   * El backend de Spring Boot se encarga de crear el usuario, fijar la contraseña y mapear el rol en Keycloak automáticamente de forma atómica.
+
 
 ---
 

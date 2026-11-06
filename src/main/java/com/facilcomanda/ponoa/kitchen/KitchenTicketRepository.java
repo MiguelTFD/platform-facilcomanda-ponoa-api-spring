@@ -16,8 +16,11 @@ interface KitchenTicketRepository extends CrudRepository<KitchenTicket, Long> {
 
   List<KitchenTicket> findAllByBranchId(Long branchId);
 
+  @Query(
+      "SELECT * FROM kitchen_tickets WHERE branch_id = :branchId AND status IN (:statuses) ORDER BY created_at ASC LIMIT 100")
   List<KitchenTicket> findAllByBranchIdAndStatusIn(
-      Long branchId, Collection<KitchenTicketStatus> statuses);
+      @Param("branchId") Long branchId,
+      @Param("statuses") Collection<KitchenTicketStatus> statuses);
 
   @Modifying
   @Query("UPDATE kitchen_tickets SET status = :status WHERE id = :id AND branch_id = :branchId")

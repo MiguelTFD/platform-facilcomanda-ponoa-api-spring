@@ -48,4 +48,16 @@ class KitchenOrderListener {
     kitchenTicketService.cancelTicketsForOrder(
         event.branchId(), event.orderId(), event.cancellationReason());
   }
+
+  @Async
+  @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+  public void onOrderStatusChanged(com.facilcomanda.ponoa.sales.OrderStatusChangedEvent event) {
+    try {
+      KitchenTicketStatus ticketStatus = KitchenTicketStatus.valueOf(event.newStatus());
+      kitchenTicketService.updateTicketStatusForOrder(
+          event.branchId(), event.orderId(), ticketStatus);
+    } catch (IllegalArgumentException ignored) {
+      // Ignored if status is not in KitchenTicketStatus (e.g., PAID)
+    }
+  }
 }

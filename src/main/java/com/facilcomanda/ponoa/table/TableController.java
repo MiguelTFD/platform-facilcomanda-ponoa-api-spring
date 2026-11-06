@@ -3,9 +3,12 @@ package com.facilcomanda.ponoa.table;
 import com.facilcomanda.ponoa.global.security.BranchAccessValidator;
 import com.facilcomanda.ponoa.table.payload.CreateFloorRequest;
 import com.facilcomanda.ponoa.table.payload.CreateTableRequest;
+import com.facilcomanda.ponoa.table.payload.CreateZoneRequest;
 import com.facilcomanda.ponoa.table.payload.FloorResponse;
 import com.facilcomanda.ponoa.table.payload.TableResponse;
 import com.facilcomanda.ponoa.table.payload.UpdateTableStateRequest;
+import com.facilcomanda.ponoa.table.payload.UpdateZoneRequest;
+import com.facilcomanda.ponoa.table.payload.ZoneResponse;
 import jakarta.validation.Valid;
 import java.net.URI;
 import java.util.List;
@@ -17,6 +20,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -69,7 +73,7 @@ class TableController {
     return ResponseEntity.ok(floors);
   }
 
-  @org.springframework.web.bind.annotation.PutMapping("/floors/{id}")
+  @PutMapping("/floors/{id}")
   @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('ADMINISTRADOR', 'EMPRESA')")
   public ResponseEntity<Void> updateFloor(
       @PathVariable Long id,
@@ -79,6 +83,96 @@ class TableController {
 
     Long branchId = branchAccessValidator.resolveAndValidateBranchId(jwt, branchIdHeader);
     tableService.updateFloor(id, branchId, request);
+
+    return ResponseEntity.noContent().build();
+  }
+
+  @PostMapping("/zones")
+  @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('ADMINISTRADOR', 'EMPRESA')")
+  public ResponseEntity<Void> createZone(
+      @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
+      @AuthenticationPrincipal Jwt jwt,
+      @Valid @RequestBody CreateZoneRequest request) {
+
+    Long branchId = branchAccessValidator.resolveAndValidateBranchId(jwt, branchIdHeader);
+    Long zoneId = tableService.createZone(branchId, request);
+
+    URI location =
+        ServletUriComponentsBuilder.fromCurrentRequest()
+            .path("/{id}")
+            .buildAndExpand(zoneId)
+            .toUri();
+
+    return ResponseEntity.created(location).build();
+  }
+
+  @GetMapping("/zones")
+  public ResponseEntity<List<ZoneResponse>> listZones(
+      @RequestParam(required = false) Long floorId,
+      @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
+      @AuthenticationPrincipal Jwt jwt) {
+
+    Long branchId = branchAccessValidator.resolveAndValidateBranchId(jwt, branchIdHeader);
+    List<ZoneResponse> zones =
+        tableService.getZones(branchId, floorId).stream()
+            .map(
+                z ->
+                    new ZoneResponse(
+                        z.id(), z.branchId(), z.floorId(), z.name(), z.description()))
+            .toList();
+
+    return ResponseEntity.ok(zones);
+  }
+
+  @GetMapping("/zones/{id}")
+  public ResponseEntity<ZoneResponse> getZone(
+      @PathVariable Long id,
+      @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
+      @AuthenticationPrincipal Jwt jwt) {
+
+    Long branchId = branchAccessValidator.resolveAndValidateBranchId(jwt, branchIdHeader);
+    RestaurantZone z = tableService.getZone(branchId, id);
+
+    return ResponseEntity.ok(
+        new ZoneResponse(z.id(), z.branchId(), z.floorId(), z.name(), z.description()));
+  }
+
+  @PutMapping("/zones/{id}")
+  @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('ADMINISTRADOR', 'EMPRESA')")
+  public ResponseEntity<Void> updateZone(
+      @PathVariable Long id,
+      @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
+      @AuthenticationPrincipal Jwt jwt,
+      @Valid @RequestBody UpdateZoneRequest request) {
+
+    Long branchId = branchAccessValidator.resolveAndValidateBranchId(jwt, branchIdHeader);
+    tableService.updateZone(id, branchId, request);
+
+    return ResponseEntity.noContent().build();
+  }
+
+  @PatchMapping("/zones/{id}/deactivate")
+  @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('ADMINISTRADOR', 'EMPRESA')")
+  public ResponseEntity<Void> deactivateZone(
+      @PathVariable Long id,
+      @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
+      @AuthenticationPrincipal Jwt jwt) {
+
+    Long branchId = branchAccessValidator.resolveAndValidateBranchId(jwt, branchIdHeader);
+    tableService.deactivateZone(id, branchId);
+
+    return ResponseEntity.noContent().build();
+  }
+
+  @DeleteMapping("/zones/{id}")
+  @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('ADMINISTRADOR', 'EMPRESA')")
+  public ResponseEntity<Void> deleteZone(
+      @PathVariable Long id,
+      @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
+      @AuthenticationPrincipal Jwt jwt) {
+
+    Long branchId = branchAccessValidator.resolveAndValidateBranchId(jwt, branchIdHeader);
+    tableService.deactivateZone(id, branchId);
 
     return ResponseEntity.noContent().build();
   }
@@ -105,18 +199,20 @@ class TableController {
   @GetMapping("/tables")
   public ResponseEntity<List<TableResponse>> listTables(
       @RequestParam(required = false) Long floorId,
+      @RequestParam(required = false) Long zoneId,
       @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
       @AuthenticationPrincipal Jwt jwt) {
 
     Long branchId = branchAccessValidator.resolveAndValidateBranchId(jwt, branchIdHeader);
     List<TableResponse> tables =
-        tableService.getTables(branchId, floorId).stream()
+        tableService.getTables(branchId, floorId, zoneId).stream()
             .map(
                 t ->
                     new TableResponse(
                         t.id(),
                         t.branchId(),
                         t.floorId(),
+                        t.zoneId(),
                         t.name(),
                         t.description(),
                         t.state(),
@@ -140,6 +236,7 @@ class TableController {
             t.id(),
             t.branchId(),
             t.floorId(),
+            t.zoneId(),
             t.name(),
             t.description(),
             t.state(),

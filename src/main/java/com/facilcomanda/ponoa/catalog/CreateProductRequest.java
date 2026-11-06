@@ -16,5 +16,18 @@ public record CreateProductRequest(
   public record SkuPayload(
       @NotBlank String skuCode,
       @NotBlank String presentationName,
-      @NotNull @PositiveOrZero BigDecimal currentPrice) {}
+      @NotNull @PositiveOrZero BigDecimal currentPrice,
+      Boolean requiresStock) {
+
+    public SkuPayload {
+      if (requiresStock == null) {
+        requiresStock = true;
+      }
+    }
+
+    public SkuPayload(
+        String skuCode, String presentationName, BigDecimal currentPrice) {
+      this(skuCode, presentationName, currentPrice, true);
+    }
+  }
 }

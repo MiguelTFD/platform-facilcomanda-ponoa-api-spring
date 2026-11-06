@@ -9,6 +9,20 @@ import org.springframework.data.repository.query.Param;
 
 interface CustomerRepository extends CrudRepository<Customer, Long> {
 
+  @Query("SELECT * FROM customers WHERE is_active = TRUE ORDER BY id DESC LIMIT 200")
+  java.util.List<Customer> findAllActive();
+
+  @Query(
+      "SELECT * FROM customers "
+          + "WHERE is_active = TRUE AND ("
+          + "  LOWER(name) LIKE LOWER(CONCAT('%', :query, '%')) OR "
+          + "  identity_document_number LIKE CONCAT('%', :query, '%')"
+          + ") ORDER BY id DESC LIMIT 100")
+  java.util.List<Customer> searchActive(@Param("query") String query);
+
+  @Query("SELECT * FROM customers WHERE id = :id AND is_active = TRUE")
+  Optional<Customer> findActiveById(@Param("id") Long id);
+
   @Query(
       "SELECT * FROM customers "
           + "WHERE identity_document_type = :type AND identity_document_number = :number AND is_active = TRUE")

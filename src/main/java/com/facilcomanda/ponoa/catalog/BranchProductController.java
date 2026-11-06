@@ -95,6 +95,8 @@ class BranchProductController {
         bp.productName(),
         bp.presentationName(),
         bp.price(),
-        bp.isAvailable());
+        bp.isAvailable(),
+        bp.productionArea() != null ? bp.productionArea() : "COCINA",
+        bp.requiresStock() != null ? bp.requiresStock() : true);
   }
 }

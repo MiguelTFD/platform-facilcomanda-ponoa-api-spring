@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,6 +23,7 @@ public class CustomerLookupService {
   private final CustomerAntiAbuseService customerAntiAbuseService;
   private final Map<String, CacheEntry> localCache = new ConcurrentHashMap<>();
 
+  @Autowired
   public CustomerLookupService(
       CustomerRepository customerRepository,
       TaxIdLookupClient taxIdLookupClient,
@@ -68,7 +70,8 @@ public class CustomerLookupService {
 
     // 2. Check local database (cost S/ 0)
     Optional<Customer> dbCustomer =
-        customerRepository.findByIdentityDocumentTypeAndIdentityDocumentNumber(docType, cleanNumber);
+        customerRepository.findByIdentityDocumentTypeAndIdentityDocumentNumber(
+            docType, cleanNumber);
     if (dbCustomer.isPresent()) {
       Customer c = dbCustomer.get();
       customerAntiAbuseService.recordSuccessfulLookup(userId, ipAddress);
@@ -95,7 +98,8 @@ public class CustomerLookupService {
           "CACHE");
     }
 
-    // 4. Check negative cache (prevents brute-force / repeated billable calls for non-existent documents)
+    // 4. Check negative cache (prevents brute-force / repeated billable calls for non-existent
+    // documents)
     if (customerAntiAbuseService.isNegativelyCached(docType, cleanNumber)) {
       return CustomerLookupResponse.notFound(
           "NEGATIVE_CACHE",
@@ -106,7 +110,8 @@ public class CustomerLookupService {
     if (!customerAntiAbuseService.tryAcquireDailyQuota()) {
       return CustomerLookupResponse.notFound(
           "QUOTA_EXCEEDED",
-          "Límite diario de consultas automáticas a RENIEC/SUNAT alcanzado. Ingrese los datos del cliente manualmente.");
+          "Límite diario de consultas automáticas a RENIEC/SUNAT alcanzado. Ingrese los datos del"
+              + " cliente manualmente.");
     }
 
     // 6. Call external Tax API

@@ -19,7 +19,9 @@ interface CashShiftRepository extends CrudRepository<CashShift, Long> {
 
   Optional<CashShift> findFirstByBranchIdAndStatusOrderByOpenedAtDesc(Long branchId, String status);
 
-  List<CashShift> findAllByBranchIdOrderByOpenedAtDesc(Long branchId);
+  @Query(
+      "SELECT * FROM cash_shifts WHERE branch_id = :branchId ORDER BY opened_at DESC LIMIT 100")
+  List<CashShift> findAllByBranchIdOrderByOpenedAtDesc(@Param("branchId") Long branchId);
 
   @Query(
       "SELECT COALESCE(SUM(amount), 0) FROM cash_movements "

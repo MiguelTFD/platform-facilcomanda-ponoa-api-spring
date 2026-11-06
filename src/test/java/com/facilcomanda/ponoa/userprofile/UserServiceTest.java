@@ -12,6 +12,7 @@ import com.facilcomanda.ponoa.global.exception.ResourceNotFoundException;
 import com.facilcomanda.ponoa.userprofile.payload.CreateAdminUserRequest;
 import com.facilcomanda.ponoa.userprofile.payload.CreateCompanyUserRequest;
 import com.facilcomanda.ponoa.userprofile.payload.CreateStaffUserRequest;
+import com.facilcomanda.ponoa.userprofile.payload.UpdateUserRequest;
 import com.facilcomanda.ponoa.userprofile.payload.UserResponse;
 import java.time.OffsetDateTime;
 import java.util.Collections;
@@ -22,6 +23,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import com.facilcomanda.ponoa.global.security.KeycloakAdminClient;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DuplicateKeyException;
@@ -32,12 +34,13 @@ class UserServiceTest {
 
   @Mock private AppUserRepository userRepository;
   @Mock private BranchProvider branchProvider;
+  @Mock private KeycloakAdminClient keycloakAdminClient;
 
   private UserService userService;
 
   @BeforeEach
   void setUp() {
-    userService = new UserService(userRepository, branchProvider);
+    userService = new UserService(userRepository, branchProvider, Optional.of(keycloakAdminClient));
   }
 
   @Test
@@ -343,5 +346,296 @@ class UserServiceTest {
 
     assertThat(response.id()).isEqualTo(targetUserId);
     assertThat(response.branchId()).isEqualTo(99L);
+  }
+
+  @Test
+  @DisplayName("Should provision Keycloak user and assign EMPRESA role when password is provided")
+  void shouldProvisionKeycloakUserWhenCreatingCompanyWithPassword() {
+    CreateCompanyUserRequest request =
+        new CreateCompanyUserRequest(null, "newcompany@facilcomanda.com", "Secret123!", "Acme", "Corp", "999888777");
+
+    UUID keycloakGeneratedId = UUID.randomUUID();
+    when(userRepository.existsByEmail("newcompany@facilcomanda.com")).thenReturn(false);
+    when(keycloakAdminClient.createUserWithRole(
+            "newcompany@facilcomanda.com", "Secret123!", "Acme", "Corp", "EMPRESA"))
+        .thenReturn(keycloakGeneratedId);
+
+    UUID createdId = userService.createCompanyUser(request);
+
+    assertThat(createdId).isEqualTo(keycloakGeneratedId);
+    verify(keycloakAdminClient)
+        .createUserWithRole("newcompany@facilcomanda.com", "Secret123!", "Acme", "Corp", "EMPRESA");
+    verify(userRepository)
+        .insertDetailedUser(
+            eq(keycloakGeneratedId),
+            eq("newcompany@facilcomanda.com"),
+            eq("Acme"),
+            eq("Corp"),
+            eq("999888777"),
+            eq("EMPRESA"),
+            eq(null),
+            eq(null),
+            eq(true),
+            any(),
+            any());
+  }
+
+  @Test
+  @DisplayName("Should provision Keycloak user and assign role when creating staff with password")
+  void shouldProvisionKeycloakUserWhenCreatingStaffWithPassword() {
+    UUID callerId = UUID.randomUUID();
+    UUID keycloakStaffId = UUID.randomUUID();
+    CreateStaffUserRequest request =
+        new CreateStaffUserRequest(
+            null,
+            "cajero.auto@facilcomanda.com",
+            "CajeroPass123!",
+            "Carlos",
+            "Cajero",
+            "987654321",
+            AppUserRole.CAJERO,
+            1L);
+
+    when(branchProvider.existsBranch(1L)).thenReturn(true);
+    when(userRepository.existsByEmail("cajero.auto@facilcomanda.com")).thenReturn(false);
+    when(keycloakAdminClient.createUserWithRole(
+            "cajero.auto@facilcomanda.com", "CajeroPass123!", "Carlos", "Cajero", "CAJERO", 1L))
+        .thenReturn(keycloakStaffId);
+
+    UUID createdId = userService.createStaffUser(callerId, true, null, request);
+
+    assertThat(createdId).isEqualTo(keycloakStaffId);
+    verify(keycloakAdminClient)
+        .createUserWithRole("cajero.auto@facilcomanda.com", "CajeroPass123!", "Carlos", "Cajero", "CAJERO", 1L);
+    verify(userRepository)
+        .insertDetailedUser(
+            eq(keycloakStaffId),
+            eq("cajero.auto@facilcomanda.com"),
+            eq("Carlos"),
+            eq("Cajero"),
+            eq("987654321"),
+            eq("CAJERO"),
+            eq(1L),
+            eq(callerId),
+            eq(true),
+            any(),
+            any());
+  }
+
+  @Test
+  @DisplayName("Should execute compensating delete in Keycloak if DB insert fails")
+  void shouldDeleteKeycloakUserIfDatabaseInsertFails() {
+    CreateCompanyUserRequest request =
+        new CreateCompanyUserRequest(null, "fail@facilcomanda.com", "Pass123!", "Fail", "User", "999");
+
+    UUID keycloakId = UUID.randomUUID();
+    when(userRepository.existsByEmail("fail@facilcomanda.com")).thenReturn(false);
+    when(keycloakAdminClient.createUserWithRole(
+            "fail@facilcomanda.com", "Pass123!", "Fail", "User", "EMPRESA"))
+        .thenReturn(keycloakId);
+
+    org.mockito.Mockito.doThrow(new RuntimeException("DB Connection timeout"))
+        .when(userRepository)
+        .insertDetailedUser(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
+
+    assertThatThrownBy(() -> userService.createCompanyUser(request))
+        .isInstanceOf(RuntimeException.class)
+        .hasMessageContaining("DB Connection timeout");
+
+    verify(keycloakAdminClient).deleteUser(keycloakId);
+  }
+
+  @Test
+  @DisplayName("Should update user details using targeted query without touching documents or addresses")
+  void shouldUpdateUserDetailsSafely() {
+    UUID callerId = UUID.randomUUID();
+    UUID targetUserId = UUID.randomUUID();
+
+    AppUser user =
+        new AppUser(
+            targetUserId,
+            "user@facilcomanda.com",
+            "Old",
+            "Name",
+            "111222333",
+            "MESERO",
+            1L,
+            null,
+            true,
+            OffsetDateTime.now(),
+            null,
+            Collections.emptySet(),
+            Collections.emptySet());
+
+    when(userRepository.findById(targetUserId)).thenReturn(Optional.of(user));
+    when(branchProvider.existsBranch(1L)).thenReturn(true);
+    when(userRepository.updateUserDetails(
+            eq(targetUserId), eq("New"), eq("Updated"), eq("999111222"), eq("MESERO"), eq(1L), eq(true)))
+        .thenReturn(1);
+
+    UpdateUserRequest request =
+        new UpdateUserRequest("New", "Updated", "999111222", AppUserRole.MESERO, 1L, true);
+
+    userService.updateUser(callerId, true, null, targetUserId, request);
+
+    verify(userRepository)
+        .updateUserDetails(
+            eq(targetUserId), eq("New"), eq("Updated"), eq("999111222"), eq("MESERO"), eq(1L), eq(true));
+  }
+
+  @Test
+  @DisplayName("Should deactivate user using targeted query without touching documents or addresses")
+  void shouldDeactivateUserSafely() {
+    UUID callerId = UUID.randomUUID();
+    UUID targetUserId = UUID.randomUUID();
+
+    AppUser user =
+        new AppUser(
+            targetUserId,
+            "user@facilcomanda.com",
+            "User",
+            "Name",
+            "111222333",
+            "MESERO",
+            1L,
+            null,
+            true,
+            OffsetDateTime.now(),
+            null,
+            Collections.emptySet(),
+            Collections.emptySet());
+
+    when(userRepository.findById(targetUserId)).thenReturn(Optional.of(user));
+    when(userRepository.deactivateUser(targetUserId)).thenReturn(1);
+
+    userService.deactivateUser(callerId, true, null, targetUserId);
+
+    verify(userRepository).deactivateUser(targetUserId);
+  }
+
+  @Test
+  @DisplayName("Should create staff user assigned to multiple branches and multiple roles")
+  void shouldCreateStaffUserWithMultipleBranchesAndRoles() {
+    UUID empresaCallerId = UUID.randomUUID();
+    when(branchProvider.existsBranch(1L)).thenReturn(true);
+    when(branchProvider.existsBranch(2L)).thenReturn(true);
+    when(userRepository.existsByEmail("multirole@facilcomanda.com")).thenReturn(false);
+
+    CreateStaffUserRequest request =
+        new CreateStaffUserRequest(
+            null,
+            "multirole@facilcomanda.com",
+            null,
+            "Lucia",
+            "Polivalente",
+            "988777666",
+            AppUserRole.CAJERO,
+            java.util.Set.of(AppUserRole.CAJERO, AppUserRole.MESERO),
+            1L,
+            java.util.Set.of(1L, 2L));
+
+    UUID createdId = userService.createStaffUser(empresaCallerId, true, null, request);
+
+    assertThat(createdId).isNotNull();
+    verify(userRepository).insertUserBranch(createdId, 1L);
+    verify(userRepository).insertUserBranch(createdId, 2L);
+    verify(userRepository).insertUserRole(createdId, "CAJERO");
+    verify(userRepository).insertUserRole(createdId, "MESERO");
+  }
+
+  @Test
+  @DisplayName("Should assign multiple branches and roles to an existing user")
+  void shouldAssignMultipleBranchesAndRolesToExistingUser() {
+    UUID empresaCallerId = UUID.randomUUID();
+    UUID targetUserId = UUID.randomUUID();
+
+    AppUser user =
+        new AppUser(
+            targetUserId,
+            "staff@facilcomanda.com",
+            "Staff",
+            "Multi",
+            "911222333",
+            "MESERO",
+            1L,
+            empresaCallerId,
+            true,
+            OffsetDateTime.now(),
+            null,
+            Collections.emptySet(),
+            Collections.emptySet());
+
+    when(userRepository.findById(targetUserId)).thenReturn(Optional.of(user));
+    when(branchProvider.existsBranch(1L)).thenReturn(true);
+    when(branchProvider.existsBranch(3L)).thenReturn(true);
+
+    userService.assignUserBranches(
+        empresaCallerId, true, null, targetUserId, java.util.Set.of(1L, 3L));
+
+    verify(userRepository).deleteUserBranches(targetUserId);
+    verify(userRepository).insertUserBranch(targetUserId, 1L);
+    verify(userRepository).insertUserBranch(targetUserId, 3L);
+
+    userService.assignUserRoles(
+        empresaCallerId,
+        true,
+        null,
+        targetUserId,
+        java.util.Set.of(AppUserRole.MESERO, AppUserRole.COCINERO));
+
+    verify(userRepository).deleteUserRoles(targetUserId);
+    verify(userRepository).insertUserRole(targetUserId, "MESERO");
+    verify(userRepository).insertUserRole(targetUserId, "COCINERO");
+  }
+
+  @Test
+  @DisplayName("Should synchronize password change with Keycloak when password is provided in UpdateUserRequest")
+  void shouldSyncPasswordWithKeycloakWhenUpdatingUserWithPassword() {
+    UUID callerId = UUID.randomUUID();
+    UUID targetUserId = UUID.randomUUID();
+
+    AppUser user =
+        new AppUser(
+            targetUserId,
+            "user@facilcomanda.com",
+            "Juan",
+            "Perez",
+            "999888777",
+            "MESERO",
+            1L,
+            null,
+            true,
+            OffsetDateTime.now(),
+            null,
+            Collections.emptySet(),
+            Collections.emptySet());
+
+    when(userRepository.findById(targetUserId)).thenReturn(Optional.of(user));
+    when(branchProvider.existsBranch(1L)).thenReturn(true);
+    when(userRepository.updateUserDetails(
+            eq(targetUserId),
+            eq("Juan"),
+            eq("Perez"),
+            eq("999888777"),
+            eq("MESERO"),
+            eq(1L),
+            eq(true)))
+        .thenReturn(1);
+
+    UpdateUserRequest requestWithPassword =
+        new UpdateUserRequest(
+            "Juan",
+            "Perez",
+            "999888777",
+            "NuevaClaveSegura123!",
+            AppUserRole.MESERO,
+            java.util.Set.of(AppUserRole.MESERO),
+            1L,
+            java.util.Set.of(1L),
+            true);
+
+    userService.updateUser(callerId, true, null, targetUserId, requestWithPassword);
+
+    verify(keycloakAdminClient).resetUserPassword(targetUserId, "NuevaClaveSegura123!");
   }
 }

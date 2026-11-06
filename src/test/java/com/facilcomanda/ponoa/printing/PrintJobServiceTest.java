@@ -10,7 +10,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.facilcomanda.ponoa.catalog.CatalogPriceProvider;
+import com.facilcomanda.ponoa.global.exception.ResourceNotFoundException;
 import com.facilcomanda.ponoa.printing.payload.PrintJobMessage;
+import com.facilcomanda.ponoa.printing.payload.PrinterFailureAlert;
 import com.facilcomanda.ponoa.printing.payload.RegisterPrinterRequest;
 import com.facilcomanda.ponoa.sales.CustomerOrderProvider;
 import java.time.OffsetDateTime;
@@ -37,6 +39,7 @@ class PrintJobServiceTest {
   @Mock private RabbitTemplate rabbitTemplate;
   @Mock private CatalogPriceProvider catalogPriceProvider;
   @Mock private CustomerOrderProvider customerOrderProvider;
+  @Mock private PrinterAlertPublisher alertPublisher;
 
   @InjectMocks private PrintJobService printJobService;
 
@@ -663,5 +666,224 @@ class PrintJobServiceTest {
     assertThatThrownBy(() -> printJobService.requestPreCheckPrint(branchId, orderId, null))
         .isInstanceOf(PrintCooldownException.class)
         .hasMessageContaining("reimpresion");
+  }
+
+  @Test
+  @DisplayName("ACK: Should update status to COMPLETED when status is COMPLETED")
+  void shouldAcknowledgeJobSuccessfullyWhenCompleted() {
+    Long branchId = 1L;
+    Long jobId = 100L;
+
+    PrintJob pendingJob =
+        new PrintJob(
+            jobId,
+            branchId,
+            10L,
+            50L,
+            PrintDocumentType.KITCHEN_ORDER,
+            "key-100",
+            PrintJobStatus.DISPATCHED,
+            null,
+            0,
+            null,
+            null);
+
+    when(printJobRepository.findByIdAndBranchId(jobId, branchId))
+        .thenReturn(Optional.of(pendingJob));
+
+    printJobService.acknowledgePrintJob(branchId, jobId, PrintJobStatus.COMPLETED, null);
+
+    verify(printJobRepository)
+        .updateJobStatus(jobId, branchId, PrintJobStatus.COMPLETED.name(), null);
+    verify(alertPublisher, never()).publishPrinterFailure(any());
+  }
+
+  @Test
+  @DisplayName("ACK: Should update status to FAILED and publish PrinterFailureAlert when status is FAILED")
+  void shouldAcknowledgeJobSuccessfullyWhenFailedAndPublishAlert() {
+    Long branchId = 1L;
+    Long jobId = 101L;
+
+    PrintJob dispatchedJob =
+        new PrintJob(
+            jobId,
+            branchId,
+            10L,
+            50L,
+            PrintDocumentType.CUSTOMER_RECEIPT,
+            "key-101",
+            PrintJobStatus.DISPATCHED,
+            null,
+            0,
+            null,
+            null);
+
+    PrinterDevice device =
+        new PrinterDevice(
+            10L, branchId, "Caja 1", "192.168.1.100", 9100, "TCP", "CAJA-01", true, null, null);
+
+    when(printJobRepository.findByIdAndBranchId(jobId, branchId))
+        .thenReturn(Optional.of(dispatchedJob));
+    when(printerDeviceRepository.findByIdAndBranchId(10L, branchId))
+        .thenReturn(Optional.of(device));
+
+    printJobService.acknowledgePrintJob(
+        branchId, jobId, PrintJobStatus.FAILED, "Out of paper");
+
+    verify(printJobRepository)
+        .updateJobStatus(jobId, branchId, PrintJobStatus.FAILED.name(), "Out of paper");
+
+    ArgumentCaptor<PrinterFailureAlert> alertCaptor =
+        ArgumentCaptor.forClass(PrinterFailureAlert.class);
+    verify(alertPublisher).publishPrinterFailure(alertCaptor.capture());
+
+    PrinterFailureAlert alert = alertCaptor.getValue();
+    assertThat(alert.jobId()).isEqualTo(jobId);
+    assertThat(alert.branchId()).isEqualTo(branchId);
+    assertThat(alert.ipAddress()).isEqualTo("192.168.1.100");
+    assertThat(alert.port()).isEqualTo(9100);
+    assertThat(alert.errorMessage()).isEqualTo("Out of paper");
+  }
+
+  @Test
+  @DisplayName("ACK: Should ignore ACK when job is already COMPLETED (idempotent)")
+  void shouldIgnoreAckWhenJobAlreadyCompleted() {
+    Long branchId = 1L;
+    Long jobId = 102L;
+
+    PrintJob completedJob =
+        new PrintJob(
+            jobId,
+            branchId,
+            10L,
+            50L,
+            PrintDocumentType.KITCHEN_ORDER,
+            "key-102",
+            PrintJobStatus.COMPLETED,
+            null,
+            0,
+            null,
+            null);
+
+    when(printJobRepository.findByIdAndBranchId(jobId, branchId))
+        .thenReturn(Optional.of(completedJob));
+
+    printJobService.acknowledgePrintJob(branchId, jobId, PrintJobStatus.COMPLETED, null);
+
+    verify(printJobRepository, never()).updateJobStatus(any(), any(), any(), any());
+    verify(alertPublisher, never()).publishPrinterFailure(any());
+  }
+
+  @Test
+  @DisplayName("ACK: Should throw IllegalArgumentException when status is not COMPLETED or FAILED")
+  void shouldThrowWhenAckStatusIsInvalid() {
+    Long branchId = 1L;
+    Long jobId = 103L;
+
+    PrintJob job =
+        new PrintJob(
+            jobId,
+            branchId,
+            10L,
+            50L,
+            PrintDocumentType.KITCHEN_ORDER,
+            "key-103",
+            PrintJobStatus.DISPATCHED,
+            null,
+            0,
+            null,
+            null);
+
+    when(printJobRepository.findByIdAndBranchId(jobId, branchId)).thenReturn(Optional.of(job));
+
+    assertThatThrownBy(
+            () ->
+                printJobService.acknowledgePrintJob(
+                    branchId, jobId, PrintJobStatus.PENDING, null))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("Expected COMPLETED or FAILED");
+  }
+
+  @Test
+  @DisplayName("ACK: Should throw ResourceNotFoundException when job does not exist")
+  void shouldThrowWhenAckJobNotFound() {
+    Long branchId = 1L;
+    Long jobId = 9999L;
+
+    when(printJobRepository.findByIdAndBranchId(jobId, branchId)).thenReturn(Optional.empty());
+
+    assertThatThrownBy(
+            () ->
+                printJobService.acknowledgePrintJob(
+                    branchId, jobId, PrintJobStatus.COMPLETED, null))
+        .isInstanceOf(ResourceNotFoundException.class)
+        .hasMessageContaining("PrintJob 9999 not found");
+  }
+
+  @Test
+  @DisplayName("Should return jobs filtered by status when status is provided")
+  void shouldReturnJobsFilteredByStatus() {
+    Long branchId = 1L;
+    PrintJob job =
+        new PrintJob(
+            1L,
+            branchId,
+            10L,
+            50L,
+            PrintDocumentType.KITCHEN_ORDER,
+            "key-1",
+            PrintJobStatus.FAILED,
+            "Error",
+            1,
+            null,
+            null);
+
+    when(printJobRepository.findAllByBranchIdAndStatus(branchId, PrintJobStatus.FAILED))
+        .thenReturn(List.of(job));
+
+    List<PrintJob> result = printJobService.getPrintJobsByBranch(branchId, PrintJobStatus.FAILED);
+
+    assertThat(result).hasSize(1);
+    assertThat(result.get(0).status()).isEqualTo(PrintJobStatus.FAILED);
+    verify(printJobRepository).findAllByBranchIdAndStatus(branchId, PrintJobStatus.FAILED);
+  }
+
+  @Test
+  @DisplayName("Should return all jobs for branch when status is null")
+  void shouldReturnAllJobsWhenStatusIsNull() {
+    Long branchId = 1L;
+    PrintJob job1 =
+        new PrintJob(
+            1L,
+            branchId,
+            10L,
+            50L,
+            PrintDocumentType.KITCHEN_ORDER,
+            "key-1",
+            PrintJobStatus.COMPLETED,
+            null,
+            0,
+            null,
+            null);
+    PrintJob job2 =
+        new PrintJob(
+            2L,
+            branchId,
+            10L,
+            51L,
+            PrintDocumentType.CUSTOMER_RECEIPT,
+            "key-2",
+            PrintJobStatus.DISPATCHED,
+            null,
+            0,
+            null,
+            null);
+
+    when(printJobRepository.findAllByBranchId(branchId)).thenReturn(List.of(job1, job2));
+
+    List<PrintJob> result = printJobService.getPrintJobsByBranch(branchId, null);
+
+    assertThat(result).hasSize(2);
+    verify(printJobRepository).findAllByBranchId(branchId);
   }
 }

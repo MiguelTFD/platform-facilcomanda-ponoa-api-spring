@@ -17,6 +17,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,6 +30,7 @@ public class CashService implements CashShiftProvider {
   private final CashMovementRepository movementRepository;
   private final BranchProvider branchProvider;
 
+  @Autowired
   public CashService(
       CashRegisterRepository registerRepository,
       CashShiftRepository shiftRepository,
@@ -97,17 +99,12 @@ public class CashService implements CashShiftProvider {
           "Cash register with name '" + request.name() + "' already exists in branch " + branchId);
     }
 
-    CashRegister updated =
-        new CashRegister(
-            register.id(),
-            register.branchId(),
-            request.name().trim(),
-            request.description() != null ? request.description().trim() : null,
-            request.isActive() != null ? request.isActive() : register.isActive(),
-            register.createdAt(),
-            OffsetDateTime.now());
-
-    registerRepository.save(updated);
+    registerRepository.updateRegisterDetails(
+        registerId,
+        branchId,
+        request.name().trim(),
+        request.description() != null ? request.description().trim() : null,
+        request.isActive() != null ? request.isActive() : register.isActive());
   }
 
   @Transactional
@@ -126,17 +123,7 @@ public class CashService implements CashShiftProvider {
       throw new IllegalStateException("Cannot deactivate cash register while it has an open shift.");
     }
 
-    CashRegister updated =
-        new CashRegister(
-            register.id(),
-            register.branchId(),
-            register.name(),
-            register.description(),
-            false,
-            register.createdAt(),
-            OffsetDateTime.now());
-
-    registerRepository.save(updated);
+    registerRepository.softDeleteRegister(registerId, branchId);
   }
 
   @Transactional

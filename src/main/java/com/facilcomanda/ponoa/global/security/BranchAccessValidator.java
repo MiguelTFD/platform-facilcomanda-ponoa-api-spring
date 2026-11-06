@@ -76,40 +76,55 @@ public class BranchAccessValidator {
       return Collections.emptyList();
     }
 
-    // Check single 'branch_id' claim (number or string)
+    java.util.LinkedHashSet<Long> resolvedBranches = new java.util.LinkedHashSet<>();
+
+    // 1. Check single or collection 'branch_id' claim
     Object singleBranch = jwt.getClaim("branch_id");
     if (singleBranch instanceof Number num) {
-      return List.of(num.longValue());
+      resolvedBranches.add(num.longValue());
     } else if (singleBranch instanceof String str && !str.isBlank()) {
-      try {
-        return List.of(Long.parseLong(str));
-      } catch (NumberFormatException ignored) {
+      for (String part : str.split(",")) {
+        try {
+          resolvedBranches.add(Long.parseLong(part.trim()));
+        } catch (NumberFormatException ignored) {
+        }
+      }
+    } else if (singleBranch instanceof java.util.Collection<?> col) {
+      for (Object item : col) {
+        if (item != null) {
+          try {
+            resolvedBranches.add(Long.parseLong(item.toString().trim()));
+          } catch (NumberFormatException ignored) {
+          }
+        }
       }
     }
 
-    // Check array 'branches' claim
+    // 2. Check array 'branches' claim
     List<?> branches = jwt.getClaimAsStringList("branches");
     if (branches != null && !branches.isEmpty()) {
-      return branches.stream()
+      branches.stream()
           .map(Object::toString)
           .map(String::trim)
           .filter(s -> s.matches("^\\d+$"))
           .map(Long::parseLong)
-          .toList();
+          .forEach(resolvedBranches::add);
     }
 
-    // Fallback: check userBranchResolver if available
+    // 3. Merge or fallback with userBranchResolver (multi-branch assignments in DB)
     if (userBranchResolver != null && jwt.getSubject() != null) {
       try {
         UUID userId = UUID.fromString(jwt.getSubject());
-        Optional<Long> dbBranchId = userBranchResolver.findBranchIdForUser(userId);
-        if (dbBranchId.isPresent()) {
-          return List.of(dbBranchId.get());
+        List<Long> dbBranchIds = userBranchResolver.findBranchIdsForUser(userId);
+        if (dbBranchIds != null && !dbBranchIds.isEmpty()) {
+          resolvedBranches.addAll(dbBranchIds);
+        } else {
+          userBranchResolver.findBranchIdForUser(userId).ifPresent(resolvedBranches::add);
         }
       } catch (IllegalArgumentException ignored) {
       }
     }
 
-    return Collections.emptyList();
+    return List.copyOf(resolvedBranches);
   }
 }

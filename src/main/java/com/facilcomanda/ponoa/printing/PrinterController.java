@@ -117,7 +117,13 @@ class PrinterController {
       @Valid @RequestBody ConfigureRouteRequest request) {
 
     Long branchId = branchAccessValidator.resolveAndValidateBranchId(jwt, branchIdHeader);
-    printJobService.configureRoute(branchId, id, request.documentType(), request.productionArea());
+    if (request.productId() != null) {
+      printJobService.configureRoute(
+          branchId, id, request.documentType(), request.productionArea(), request.productId());
+    } else {
+      printJobService.configureRoute(
+          branchId, id, request.documentType(), request.productionArea());
+    }
 
     return ResponseEntity.ok().build();
   }
@@ -220,5 +226,20 @@ class PrinterController {
         printJobService.requestPreCheckPrint(branchId, request.orderId(), request.targetPrinterId());
 
     return ResponseEntity.accepted().body(Map.of("jobId", jobId, "printed", true));
+  }
+
+  @PostMapping("/jobs/{id}/ack")
+  @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('CAJERO', 'ADMINISTRADOR', 'EMPRESA', 'COCINERO', 'MESERO')")
+  public ResponseEntity<Map<String, Object>> acknowledgeJob(
+      @PathVariable Long id,
+      @RequestHeader(value = "X-Branch-Id", required = false) Long branchIdHeader,
+      @AuthenticationPrincipal Jwt jwt,
+      @Valid @RequestBody com.facilcomanda.ponoa.printing.payload.PrintJobAckRequest request) {
+
+    Long branchId = branchAccessValidator.resolveAndValidateBranchId(jwt, branchIdHeader);
+    printJobService.acknowledgePrintJob(branchId, id, request.status(), request.errorMessage());
+
+    return ResponseEntity.ok(
+        Map.of("jobId", id, "status", request.status().name(), "acknowledged", true));
   }
 }

@@ -498,4 +498,456 @@ class OrderServiceTest {
     assertThat(event.branchId()).isEqualTo(branchId);
     assertThat(event.targetPrinterId()).isEqualTo(targetPrinterId);
   }
+
+  @Test
+  @DisplayName("Should update order status to DELIVERED and publish OrderStatusChangedEvent")
+  void shouldUpdateOrderStatusToDelivered() {
+    Long branchId = 3L;
+    Long orderId = 20L;
+    CustomerOrder order =
+        new CustomerOrder(
+            orderId,
+            branchId,
+            UUID.randomUUID(),
+            "idemp-status",
+            null,
+            "DINE_IN",
+            null,
+            new BigDecimal("50.00"),
+            "PENDING",
+            Set.of());
+
+    when(orderRepository.findByIdAndBranchId(orderId, branchId)).thenReturn(Optional.of(order));
+
+    orderService.updateOrderStatus(branchId, orderId, "DELIVERED");
+
+    verify(orderRepository).updateStatus(orderId, branchId, "DELIVERED");
+    ArgumentCaptor<OrderStatusChangedEvent> eventCaptor =
+        ArgumentCaptor.forClass(OrderStatusChangedEvent.class);
+    verify(eventPublisher).publishEvent(eventCaptor.capture());
+    OrderStatusChangedEvent event = eventCaptor.getValue();
+    assertThat(event.orderId()).isEqualTo(orderId);
+    assertThat(event.branchId()).isEqualTo(branchId);
+    assertThat(event.previousStatus()).isEqualTo("PENDING");
+    assertThat(event.newStatus()).isEqualTo("DELIVERED");
+  }
+
+  @Test
+  @DisplayName("Should mark order as delivered via markOrderAsDelivered")
+  void shouldMarkOrderAsDelivered() {
+    Long branchId = 3L;
+    Long orderId = 21L;
+    CustomerOrder order =
+        new CustomerOrder(
+            orderId,
+            branchId,
+            UUID.randomUUID(),
+            "idemp-deliv",
+            null,
+            "DINE_IN",
+            null,
+            new BigDecimal("30.00"),
+            "PENDING",
+            Set.of());
+
+    when(orderRepository.findByIdAndBranchId(orderId, branchId)).thenReturn(Optional.of(order));
+
+    orderService.markOrderAsDelivered(branchId, orderId);
+
+    verify(orderRepository).updateStatus(orderId, branchId, "DELIVERED");
+  }
+
+  @Test
+  @DisplayName("Should throw IllegalStateException when updating status of already PAID or CANCELLED order")
+  void shouldThrowWhenUpdatingPaidOrCancelledOrder() {
+    Long branchId = 3L;
+    Long orderId = 22L;
+    CustomerOrder paidOrder =
+        new CustomerOrder(
+            orderId,
+            branchId,
+            UUID.randomUUID(),
+            "idemp-paid",
+            null,
+            "DINE_IN",
+            null,
+            new BigDecimal("30.00"),
+            "PAID",
+            Set.of());
+
+    when(orderRepository.findByIdAndBranchId(orderId, branchId)).thenReturn(Optional.of(paidOrder));
+
+    assertThatThrownBy(() -> orderService.updateOrderStatus(branchId, orderId, "DELIVERED"))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("PAGADA");
+  }
+
+  @Test
+  @DisplayName("Should throw IllegalArgumentException when passing invalid status")
+  void shouldThrowWhenPassingInvalidStatus() {
+    assertThatThrownBy(() -> orderService.updateOrderStatus(1L, 1L, "INVALID_STATUS"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("Estado no válido");
+
+    assertThatThrownBy(() -> orderService.updateOrderStatus(1L, 1L, "PAID"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("cobro");
+
+    assertThatThrownBy(() -> orderService.updateOrderStatus(1L, 1L, "CANCELLED"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("cancelación");
+  }
+
+  @Test
+  @DisplayName("Should map createdAt, updatedAt, and isModified properly in OrderResponse")
+  void shouldMapAuditTimestampsAndIsModified() {
+    Long branchId = 3L;
+    Long orderId = 23L;
+    java.time.OffsetDateTime created = java.time.OffsetDateTime.now().minusMinutes(10);
+    java.time.OffsetDateTime updated = java.time.OffsetDateTime.now();
+
+    CustomerOrder modifiedOrder =
+        new CustomerOrder(
+            orderId,
+            branchId,
+            UUID.randomUUID(),
+            "idemp-mod",
+            null,
+            "DINE_IN",
+            "Mesa 1 | [ADICION] Bebidas",
+            new BigDecimal("45.00"),
+            "PENDING",
+            null,
+            null,
+            null,
+            created,
+            updated,
+            Set.of());
+
+    when(orderRepository.findByIdAndBranchId(orderId, branchId)).thenReturn(Optional.of(modifiedOrder));
+
+    OrderResponse response = orderService.getEnrichedOrderByIdAndBranch(orderId, branchId);
+
+    assertThat(response.createdAt()).isEqualTo(created);
+    assertThat(response.updatedAt()).isEqualTo(updated);
+    assertThat(response.isModified()).isTrue();
+  }
+
+  @Test
+  @DisplayName("Should place order without deducting stock for SKUs with requiresStock = false")
+  void shouldPlaceOrderWithoutDeductingStockWhenSkuDoesNotRequireStock() {
+    Long branchId = 5L;
+    UUID userId = UUID.randomUUID();
+    String idempotencyKey = UUID.randomUUID().toString();
+    String email = "waiter@facilcomanda.com";
+
+    // SKU 101: Lomo Saltado (requiresStock = false)
+    // SKU 102: Gaseosa 500ml (requiresStock = true)
+    PlaceOrderRequest request =
+        new PlaceOrderRequest(
+            Set.of(
+                new PlaceOrderRequest.OrderItemPayload(101L, 2),
+                new PlaceOrderRequest.OrderItemPayload(102L, 3)));
+
+    when(catalogPriceProvider.getAvailablePrices(branchId, Set.of(101L, 102L)))
+        .thenReturn(
+            Map.of(
+                101L, new BigDecimal("35.00"),
+                102L, new BigDecimal("8.00")));
+    when(catalogPriceProvider.getRequiresStockForSkus(Set.of(101L, 102L)))
+        .thenReturn(Map.of(101L, false, 102L, true));
+
+    CustomerOrder savedOrder =
+        new CustomerOrder(
+            50L,
+            branchId,
+            userId,
+            idempotencyKey,
+            new BigDecimal("94.00"),
+            "PENDING",
+            Set.of(
+                new OrderItem(101L, 2, new BigDecimal("35.00")),
+                new OrderItem(102L, 3, new BigDecimal("8.00"))));
+
+    when(orderRepository.save(any(CustomerOrder.class))).thenReturn(savedOrder);
+
+    Long orderId = orderService.placeOrder(branchId, userId, idempotencyKey, email, request);
+
+    assertThat(orderId).isEqualTo(50L);
+    // Stock must NOT be deducted for non-stockable dish (SKU 101)
+    org.mockito.Mockito.verify(stockService, org.mockito.Mockito.never())
+        .deductStock(branchId, 101L, 2);
+    // Stock MUST be deducted for stockable beverage (SKU 102)
+    verify(stockService).deductStock(branchId, 102L, 3);
+  }
+
+  @Test
+  @DisplayName("Should cancel order and only replenish stock for SKUs with requiresStock = true")
+  void shouldCancelOrderAndSkipRestockForNonStockableSkus() {
+    Long branchId = 2L;
+    Long orderId = 15L;
+    UUID cancelledBy = UUID.randomUUID();
+
+    CustomerOrder order =
+        new CustomerOrder(
+            orderId,
+            branchId,
+            UUID.randomUUID(),
+            "idemp-cancel-nonstock",
+            null,
+            "DINE_IN",
+            null,
+            new BigDecimal("55.00"),
+            "PENDING",
+            Set.of(
+                new OrderItem(101L, 1, new BigDecimal("35.00")),
+                new OrderItem(102L, 2, new BigDecimal("10.00"))));
+
+    when(orderRepository.findByIdAndBranchId(orderId, branchId)).thenReturn(Optional.of(order));
+    when(catalogPriceProvider.getRequiresStockForSkus(Set.of(101L, 102L)))
+        .thenReturn(Map.of(101L, false, 102L, true));
+
+    orderService.cancelOrder(branchId, orderId, cancelledBy, "Cancelado por cliente");
+
+    org.mockito.Mockito.verify(stockService, org.mockito.Mockito.never())
+        .addStock(branchId, 101L, 1);
+    verify(stockService).addStock(branchId, 102L, 2);
+  }
+
+  @Test
+  @DisplayName("Rule 1 & 2: Should allow creating a second order on an OCCUPIED table when >= 10s have elapsed since last PENDING order")
+  void shouldAllowMultipleOpenOrdersOnOccupiedTableAfter10Seconds() {
+    Long branchId = 2L;
+    Long tableId = 15L;
+    UUID userId = UUID.randomUUID();
+    String idempotencyKey = "order-second-round";
+
+    PlaceOrderRequest request =
+        new PlaceOrderRequest(
+            tableId,
+            "DINE_IN",
+            "Segunda ronda",
+            Set.of(new PlaceOrderRequest.OrderItemPayload(201L, 2, "Heladas")));
+
+    RestaurantTableView occupiedTable =
+        new RestaurantTableView(tableId, branchId, 3L, "Mesa 4", "Terraza", TableState.OCCUPIED);
+    when(restaurantTableProvider.lockTableByIdAndBranch(tableId, branchId))
+        .thenReturn(Optional.of(occupiedTable));
+    when(orderRepository.findLatestPendingOrderCreatedAtByTable(branchId, tableId))
+        .thenReturn(Optional.of(java.time.OffsetDateTime.now().minusSeconds(12)));
+
+    when(catalogPriceProvider.getAvailablePrices(branchId, Set.of(201L)))
+        .thenReturn(Map.of(201L, new BigDecimal("15.00")));
+
+    CustomerOrder savedOrder =
+        new CustomerOrder(
+            100L,
+            branchId,
+            userId,
+            idempotencyKey,
+            tableId,
+            "DINE_IN",
+            "Segunda ronda",
+            new BigDecimal("30.00"),
+            "PENDING",
+            Set.of(new OrderItem(201L, 2, new BigDecimal("15.00"), "Heladas", "PENDING")));
+    when(orderRepository.save(any(CustomerOrder.class))).thenReturn(savedOrder);
+
+    Long orderId =
+        orderService.placeOrder(branchId, userId, idempotencyKey, "waiter@facilcomanda.com", request);
+
+    assertThat(orderId).isEqualTo(100L);
+    org.mockito.Mockito.verify(restaurantTableProvider, org.mockito.Mockito.never())
+        .occupyTableAtomically(tableId, branchId);
+  }
+
+  @Test
+  @DisplayName("Rule 2: Should reject new order on table when less than 10 seconds have elapsed since last PENDING order")
+  void shouldRejectOrderWhenLessThan10SecondsSinceLastPendingOrderOnTable() {
+    Long branchId = 2L;
+    Long tableId = 15L;
+    PlaceOrderRequest request =
+        new PlaceOrderRequest(
+            tableId,
+            "DINE_IN",
+            "Orden muy rápida",
+            Set.of(new PlaceOrderRequest.OrderItemPayload(201L, 1)));
+
+    RestaurantTableView occupiedTable =
+        new RestaurantTableView(tableId, branchId, 3L, "Mesa 4", "Terraza", TableState.OCCUPIED);
+    when(restaurantTableProvider.lockTableByIdAndBranch(tableId, branchId))
+        .thenReturn(Optional.of(occupiedTable));
+    when(orderRepository.findLatestPendingOrderCreatedAtByTable(branchId, tableId))
+        .thenReturn(Optional.of(java.time.OffsetDateTime.now().minusSeconds(4)));
+
+    assertThatThrownBy(
+            () ->
+                orderService.placeOrder(
+                    branchId,
+                    UUID.randomUUID(),
+                    "idemp-too-fast",
+                    "waiter@facilcomanda.com",
+                    request))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("Debe esperar al menos 10 segundos");
+  }
+
+  @Test
+  @DisplayName("Idempotency: Should return existing order ID without re-deducting stock on retry with same Idempotency-Key")
+  void shouldReturnExistingOrderIdWhenIdempotencyKeyAlreadyExists() {
+    Long branchId = 2L;
+    UUID userId = UUID.randomUUID();
+    String idempotencyKey = "retry-key-123";
+
+    CustomerOrder existingOrder =
+        new CustomerOrder(
+            77L,
+            branchId,
+            userId,
+            idempotencyKey,
+            new BigDecimal("40.00"),
+            "PENDING",
+            Set.of(new OrderItem(101L, 2, new BigDecimal("20.00"))));
+
+    when(orderRepository.findByBranchIdAndIdempotencyKey(branchId, idempotencyKey))
+        .thenReturn(Optional.of(existingOrder));
+
+    PlaceOrderRequest request =
+        new PlaceOrderRequest(Set.of(new PlaceOrderRequest.OrderItemPayload(101L, 2)));
+
+    Long orderId =
+        orderService.placeOrder(branchId, userId, idempotencyKey, "waiter@facilcomanda.com", request);
+
+    assertThat(orderId).isEqualTo(77L);
+    org.mockito.Mockito.verify(stockService, org.mockito.Mockito.never())
+        .deductStock(any(), any(), org.mockito.ArgumentMatchers.anyInt());
+    org.mockito.Mockito.verify(orderRepository, org.mockito.Mockito.never()).save(any());
+  }
+
+  @Test
+  @DisplayName("Rule 3 & 4: Order transitions to COMPLETED only when ALL active items are COMPLETED")
+  void shouldTransitionOrderToCompletedOnlyWhenAllActiveItemsAreCompleted() {
+    Long branchId = 1L;
+    Long orderId = 50L;
+
+    CustomerOrder orderWithTwoPendingItems =
+        new CustomerOrder(
+            orderId,
+            branchId,
+            UUID.randomUUID(),
+            "key-items",
+            5L,
+            "DINE_IN",
+            null,
+            new BigDecimal("50.00"),
+            "PENDING",
+            Set.of(
+                new OrderItem(101L, 1, new BigDecimal("30.00"), null, "PENDING"),
+                new OrderItem(102L, 2, new BigDecimal("10.00"), null, "PENDING")));
+
+    when(orderRepository.findByIdAndBranchId(orderId, branchId))
+        .thenReturn(Optional.of(orderWithTwoPendingItems));
+
+    // Step 1: Attend first item (101L) -> Order must remain PENDING because 102L is still PENDING
+    orderService.attendOrderItem(branchId, orderId, 101L);
+
+    ArgumentCaptor<CustomerOrder> firstSaveCaptor = ArgumentCaptor.forClass(CustomerOrder.class);
+    verify(orderRepository).save(firstSaveCaptor.capture());
+    CustomerOrder afterFirstItem = firstSaveCaptor.getValue();
+    assertThat(afterFirstItem.status()).isEqualTo("PENDING");
+
+    // Step 2: Attend second item (102L) -> All active items are now COMPLETED -> Order becomes COMPLETED
+    when(orderRepository.findByIdAndBranchId(orderId, branchId))
+        .thenReturn(Optional.of(afterFirstItem));
+
+    orderService.attendOrderItem(branchId, orderId, 102L);
+
+    ArgumentCaptor<CustomerOrder> secondSaveCaptor = ArgumentCaptor.forClass(CustomerOrder.class);
+    org.mockito.Mockito.verify(orderRepository, org.mockito.Mockito.times(2))
+        .save(secondSaveCaptor.capture());
+    CustomerOrder afterSecondItem = secondSaveCaptor.getAllValues().get(1);
+    assertThat(afterSecondItem.status()).isEqualTo("COMPLETED");
+  }
+
+  @Test
+  @DisplayName("Rule 3 & 4: Editing an item in a COMPLETED order sets item to MODIFIED and transitions order back to PENDING")
+  void shouldSetItemToModifiedAndOrderBackToPendingWhenItemIsEdited() {
+    Long branchId = 1L;
+    Long orderId = 60L;
+
+    CustomerOrder completedOrder =
+        new CustomerOrder(
+            orderId,
+            branchId,
+            UUID.randomUUID(),
+            "key-comp",
+            5L,
+            "DINE_IN",
+            null,
+            new BigDecimal("30.00"),
+            "COMPLETED",
+            Set.of(new OrderItem(101L, 1, new BigDecimal("30.00"), "Normal", "COMPLETED")));
+
+    when(orderRepository.findByIdAndBranchId(orderId, branchId))
+        .thenReturn(Optional.of(completedOrder));
+    when(catalogPriceProvider.getRequiresStockForSkus(Set.of(101L)))
+        .thenReturn(Map.of(101L, true));
+
+    // Edit item 101L: increase quantity from 1 to 3 and update comments
+    orderService.updateOrderItem(
+        branchId, orderId, 101L, new UpdateOrderItemRequest(3, "Con papas extra"));
+
+    // Delta = 3 - 1 = 2 deducted from stock
+    verify(stockService).deductStock(branchId, 101L, 2);
+
+    ArgumentCaptor<CustomerOrder> orderCaptor = ArgumentCaptor.forClass(CustomerOrder.class);
+    verify(orderRepository).save(orderCaptor.capture());
+    CustomerOrder updatedOrder = orderCaptor.getValue();
+
+    // Order returns to PENDING and total is updated to 90.00
+    assertThat(updatedOrder.status()).isEqualTo("PENDING");
+    assertThat(updatedOrder.totalAmount()).isEqualByComparingTo("90.00");
+    OrderItem editedItem = updatedOrder.items().iterator().next();
+    assertThat(editedItem.status()).isEqualTo("MODIFIED");
+    assertThat(editedItem.quantity()).isEqualTo(3);
+    assertThat(editedItem.comments()).isEqualTo("Con papas extra");
+  }
+
+  @Test
+  @DisplayName("Rule 5: Should NOT release table to AVAILABLE when cancelling or paying one order if other active orders remain on the table")
+  void shouldKeepTableOccupiedWhenOtherActiveOrdersRemainOnTable() {
+    Long branchId = 2L;
+    Long orderId = 15L;
+    Long tableId = 8L;
+    UUID cancelledBy = UUID.randomUUID();
+
+    CustomerOrder order =
+        new CustomerOrder(
+            orderId,
+            branchId,
+            UUID.randomUUID(),
+            "idemp-multi-1",
+            tableId,
+            "DINE_IN",
+            null,
+            new BigDecimal("20.00"),
+            "PENDING",
+            Set.of(new OrderItem(101L, 1, new BigDecimal("20.00"))));
+
+    when(orderRepository.findByIdAndBranchId(orderId, branchId)).thenReturn(Optional.of(order));
+    // Simulate 1 remaining active order on table 8
+    when(orderRepository.countActiveOrdersByTableId(branchId, tableId)).thenReturn(1L);
+
+    orderService.cancelOrder(branchId, orderId, cancelledBy, "Cancela primera orden");
+
+    // Table must NOT be released to AVAILABLE while another active order exists on table 8
+    org.mockito.Mockito.verify(restaurantTableProvider, org.mockito.Mockito.never())
+        .updateTableState(tableId, branchId, TableState.AVAILABLE);
+
+    // Now when the last active order is paid (countActiveOrdersByTableId returns 0), table IS released
+    when(orderRepository.countActiveOrdersByTableId(branchId, tableId)).thenReturn(0L);
+    orderService.markOrderAsPaid(branchId, orderId);
+
+    verify(restaurantTableProvider).updateTableState(tableId, branchId, TableState.AVAILABLE);
+  }
 }

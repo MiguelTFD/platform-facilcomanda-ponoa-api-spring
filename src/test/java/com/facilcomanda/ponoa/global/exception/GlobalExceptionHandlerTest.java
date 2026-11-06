@@ -32,6 +32,19 @@ class GlobalExceptionHandlerTest {
   }
 
   @Test
+  @DisplayName("Should handle IdentityProviderUnavailableException as 502 BAD_GATEWAY")
+  void shouldHandleIdentityProviderUnavailableException() {
+    IdentityProviderUnavailableException ex =
+        new IdentityProviderUnavailableException("Connection refused", new RuntimeException());
+
+    ProblemDetail problem = handler.handleIdentityProviderUnavailable(ex);
+
+    assertThat(problem.getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY.value());
+    assertThat(problem.getTitle()).isEqualTo("Proveedor de Identidades No Disponible");
+    assertThat(problem.getDetail()).contains("Connection refused");
+  }
+
+  @Test
   @DisplayName("Should handle IllegalStateException as 409 CONFLICT")
   void shouldHandleIllegalStateException() {
     IllegalStateException ex = new IllegalStateException("Cannot deactivate table while it is occupied");

@@ -6,8 +6,8 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 public record UpdateTableRequest(
-    @NotNull(message = "El floorId es obligatorio")
     Long floorId,
+    Long zoneId,
     @NotBlank(message = "El nombre de la mesa es obligatorio")
     @Size(max = 50, message = "El nombre no puede exceder 50 caracteres")
     String name,
@@ -15,4 +15,13 @@ public record UpdateTableRequest(
     String description,
     @NotNull(message = "La cantidad de sillas es obligatoria")
     @Min(value = 1, message = "Debe tener al menos 1 silla")
-    Integer chairs) {}
+    Integer chairs) {
+
+  public UpdateTableRequest(
+      Long floorId,
+      String name,
+      String description,
+      Integer chairs) {
+    this(floorId, null, name, description, chairs);
+  }
+}

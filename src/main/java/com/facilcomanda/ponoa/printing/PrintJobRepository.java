@@ -11,7 +11,15 @@ interface PrintJobRepository extends CrudRepository<PrintJob, Long> {
 
   Optional<PrintJob> findByIdAndBranchId(Long id, Long branchId);
 
-  List<PrintJob> findAllByBranchIdAndStatus(Long branchId, PrintJobStatus status);
+  @Query(
+      "SELECT * FROM print_jobs WHERE branch_id = :branchId AND status = :status ORDER BY created_at DESC LIMIT 100")
+  List<PrintJob> findAllByBranchIdAndStatus(
+      @Param("branchId") Long branchId, @Param("status") PrintJobStatus status);
+
+  @Query(
+      "SELECT * FROM print_jobs WHERE branch_id = :branchId ORDER BY created_at DESC LIMIT 100")
+  List<PrintJob> findAllByBranchId(
+      @Param("branchId") Long branchId);
 
   @Modifying
   @Query(
